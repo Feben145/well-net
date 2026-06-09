@@ -8,7 +8,8 @@ from datetime import timedelta
 import dj_database_url
 import os
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-secret-change-in-production")
@@ -180,6 +181,9 @@ USE_TZ = True
 # ── Static / Media ────────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "static"),
+]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
@@ -192,3 +196,4 @@ CSRF_TRUSTED_ORIGINS = ['https://well-net-backend.onrender.com']
 
 # Enable Whitenoise storage compression for static assets
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+WHITENOISE_KEEP_ONLY_HASHED_FILES = True
