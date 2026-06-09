@@ -5,6 +5,9 @@ Flat config — single file, env-driven.
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta
+import dj_database_url
+import os
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -70,16 +73,11 @@ TEMPLATES = [
 
 # ── Database ──────────────────────────────────────────────────────────────────
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DB_NAME"),
-        "USER": config("DB_USER", default="postgres"),
-        "PASSWORD": config("DB_PASSWORD", default=""),
-        "HOST": config("DB_HOST", default="localhost"),
-        "PORT": config("DB_PORT", default="5432"),
-    }
+    "default": dj_database_url.config(
+        default=f"postgres://{config('DB_USER', default='postgres')}:{config('DB_PASSWORD', default='')}@{config('DB_HOST', default='localhost')}:{config('DB_PORT', default='5432')}/{config('DB_NAME', default='wellnetdb')}",
+        conn_max_age=600
+    )
 }
-
 # ── Auth ──────────────────────────────────────────────────────────────────────
 AUTH_USER_MODEL = "users.User"
 
