@@ -69,17 +69,28 @@ TEMPLATES = [
 ]
 
 # ── Database ──────────────────────────────────────────────────────────────────
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DB_NAME"),
-        "USER": config("DB_USER", default="postgres"),
-        "PASSWORD": config("DB_PASSWORD", default=""),
-        "HOST": config("DB_HOST", default="localhost"),
-        "PORT": config("DB_PORT", default="5432"),
-    }
-}
+PRODUCTION_DB_URL = os.environ.get('DATABASE_URL')
 
+if PRODUCTION_DB_URL:
+    # We are on Render! Use the production database configuration
+    DATABASES = {
+        "default": dj_database_url.config(
+            default=PRODUCTION_DB_URL,
+            conn_max_age=600
+        )
+    }
+else:
+    # We are local! Safely read your local .env configuration keys
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": config("DB_NAME", default="wellnetdb"),
+            "USER": config("DB_USER", default="postgres"),
+            "PASSWORD": config("DB_PASSWORD", default=""),
+            "HOST": config("DB_HOST", default="localhost"),
+            "PORT": config("DB_PORT", default="5432"),
+        }
+    }
 # ── Auth ──────────────────────────────────────────────────────────────────────
 AUTH_USER_MODEL = "users.User"
 
