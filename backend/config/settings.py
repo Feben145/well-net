@@ -15,6 +15,10 @@ SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-secret-change-in-productio
 DEBUG = config("DEBUG", default=True, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
 
+# Safely append the live production URL so Render can serve the application
+if "well-net-backend.onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("well-net-backend.onrender.com")
+
 # ── Apps ──────────────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -179,3 +183,7 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = ['https://well-net-backend.onrender.com']
