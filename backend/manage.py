@@ -1,14 +1,21 @@
 #!/usr/bin/env python
 import os
-import sys
+import django
 
-def main():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+
+def create_admin():
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
     try:
-        from django.core.management import execute_from_command_line
-    except ImportError as exc:
-        raise ImportError("Couldn't import Django.") from exc
-    execute_from_command_line(sys.argv)
+        if not User.objects.filter(username='admin').exists():
+            User.objects.create_superuser('admin', 'admin@wellnet.com', 'adminpass123')
+            print("🚀 Production superuser checked/created successfully!")
+        else:
+            print("ℹ️ Admin user already exists.")
+    except Exception as e:
+        print(f"⚠️ Script execution skipped: {e}")
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    create_admin()

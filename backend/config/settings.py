@@ -2,15 +2,28 @@
 Well-Net Django Settings
 Flat config — single file, env-driven.
 """
-from pathlib import Path
-from decouple import config, Csv
-from datetime import timedelta
-import dj_database_url
+import sys
 import os
+from pathlib import Path
+from datetime import timedelta
+from decouple import config, Csv
+import dj_database_url
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# 1. Standard, explicit path tracking relative to config/settings.py
+# __file__ = backend/config/settings.py -> parent.parent = backend/
+BASE_DIR = Path(__file__).resolve().parent.parent
 
+# 2. Force Python to explicitly register the backend root in its search index
+# This guarantees that 'config.wsgi' can be resolved regardless of execution context
+sys.path.insert(0, str(BASE_DIR))
+
+# 3. Handle Render container path flattening if deployed live
+if os.environ.get("RENDER"):
+    if os.path.exists("manage.py"):
+        BASE_DIR = Path(".").resolve()
+        if str(BASE_DIR) not in sys.path:
+            sys.path.insert(0, str(BASE_DIR))
 # ── Core ──────────────────────────────────────────────────────────────────────
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-secret-change-in-production")
 DEBUG = config("DEBUG", default=True, cast=bool)
@@ -47,8 +60,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # Placed precisely after SecurityMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -99,6 +112,7 @@ else:
             "PORT": config("DB_PORT", default="5432"),
         }
     }
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 AUTH_USER_MODEL = "users.User"
 
@@ -181,19 +195,25 @@ USE_TZ = True
 # ── Static / Media ────────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+# Only include the static directory rule if the directory physically exists on disk
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, "static"),
-]
+] if os.path.exists(os.path.join(BASE_DIR, "static")) else []
+
+# Enable WhiteNoise storage compression and cache management for assets
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+WHITENOISE_KEEP_ONLY_HASHED_FILES = True
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ── Production Operations & Security ──────────────────────────────────────────
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-CSRF_TRUSTED_ORIGINS = ['https://well-net-backend.onrender.com']
-
-
-# Enable Whitenoise storage compression for static assets
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-WHITENOISE_KEEP_ONLY_HASHED_FILES = True
+if os.environ.get("RENDER"):
+    # Security adjustments specific to Render's reverse proxy structure
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    CSRF_TRUSTED_ORIGINS = ['https://well-net-backend.onrender.com']
