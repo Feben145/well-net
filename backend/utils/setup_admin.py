@@ -1,7 +1,14 @@
 #!/usr/bin/env python
 import os
+import sys
 import django
+from pathlib import Path
 
+# Force Python to find 'config' and your apps relative to this script's location
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+# Initialize Django settings configuration safely
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
