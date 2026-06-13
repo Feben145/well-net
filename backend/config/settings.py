@@ -216,4 +216,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 if os.environ.get("RENDER"):
     # Security adjustments specific to Render's reverse proxy structure
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    CSRF_TRUSTED_ORIGINS = ['https://well-net-backend.onrender.com']
+    CSRF_TRUSTED_ORIGINS = [
+        'https://well-net-backend.onrender.com',
+        'https://well-net.vercel.app',
+        'https://well-net-frontend.vercel.app'
+    ]
