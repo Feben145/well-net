@@ -27,7 +27,7 @@ if os.environ.get("RENDER"):
 # ── Core ──────────────────────────────────────────────────────────────────────
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-secret-change-in-production")
 DEBUG = config("DEBUG", default=True, cast=bool)
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
+ALLOWED_HOSTS = list(config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv()))
 
 # Safely append the live production URL so Render can serve the application
 if "well-net-backend.onrender.com" not in ALLOWED_HOSTS:
@@ -147,12 +147,30 @@ REST_FRAMEWORK = {
 }
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config(
-    "CORS_ALLOWED_ORIGINS",
-    default="http://localhost:3000",
-    cast=Csv(),
+# 1. Parse the base array from your environment safely
+CORS_ALLOWED_ORIGINS = list(
+    config(
+        "CORS_ALLOWED_ORIGINS",
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        cast=Csv(),
+    )
 )
-CORS_ALLOW_CREDENTIALS = True
+
+PRODUCTION_FRONTEND = "https://well-net.vercel.app"
+if PRODUCTION_FRONTEND not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(PRODUCTION_FRONTEND)
+
+PRODUCTION_FRONTEND_ALT = "https://well-net-frontend.vercel.app"
+if PRODUCTION_FRONTEND_ALT not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(PRODUCTION_FRONTEND_ALT)
+
+CORS_ALLOW_CREDENTIALS = True  # Kept only one instance here
+
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'accept-language',
+]
+
 
 # ── External APIs ─────────────────────────────────────────────────────────────
 GROQ_API_KEY = config("GROQ_API_KEY", default="")
@@ -216,6 +234,12 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 if os.environ.get("RENDER"):
     # Security adjustments specific to Render's reverse proxy structure
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Force production cookies and tokens to accept cross-origin HTTPS transit safely
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
     CSRF_TRUSTED_ORIGINS = [
         'https://well-net-backend.onrender.com',
         'https://well-net.vercel.app',
