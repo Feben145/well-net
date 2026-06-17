@@ -42,7 +42,7 @@ class EthiopianFood(TimeStampedModel):
     ]
 
     # ── Identity ──────────────────────────────────────────────────────────────
-    slug         = models.SlugField(unique=True)
+    slug         = models.SlugField(unique=True, max_length=100)
     name_en      = models.CharField(max_length=200)   # cleaned, no commas
     name_am      = models.CharField(max_length=200, blank=True)   # "እንጀራ"
     # display_name is the pre-formatted string shown to users:
@@ -59,11 +59,8 @@ class EthiopianFood(TimeStampedModel):
     calories_kcal = models.FloatField(default=0)
     fiber_g       = models.FloatField(default=0)
     protein_g     = models.FloatField(default=0)
+    fat_g         = models.FloatField(default=0)
     iron_mg       = models.FloatField(default=0)
-    fat_g         = models.FloatField(
-    default=0,
-    help_text="Total fat per 100g edible portion (EPHI 2025)."
-   )
     glycemic_index = models.IntegerField(default=0)
 
     # ── Gut health scores (0–3 scale) ─────────────────────────────────────────

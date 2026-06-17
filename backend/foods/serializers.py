@@ -1,73 +1,107 @@
-"""
-foods/serializers.py
-━━━━━━━━━━━━━━━━━━━━
-All food data originates from parse_ephi_pdf.py (EPHI 2025).
-
-display_name format:  "Injera teff  [እንጀራ]"
-  → the frontend should render the bracketed Amharic bold.
-  → the serializer also ships display_name_html for web consumers.
-"""
+import re
 from rest_framework import serializers
 from .models import EthiopianFood, MealLog, MealLogFood, DailyNutrition
 
 
 class FoodSerializer(serializers.ModelSerializer):
     """
-    Full food record.  Two name fields are provided:
-      display_name      — plain text  "Injera teff  [እንጀራ]"
-      display_name_html — HTML  "Injera teff  <strong>እንጀራ</strong>"
+    Full food record. Safely extracts Amharic and English text slices
+    directly from display_name if explicit columns don't exist.
     """
     display_name_html = serializers.SerializerMethodField()
+    name_am = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
 
     class Meta:
-        model  = EthiopianFood
+        model = EthiopianFood
         fields = [
             "id", "slug",
             "name_en", "name_am",
-            "display_name", "display_name_html",   # ← Amharic bold
+            "display_name", "display_name_html",
             "category", "serving_description", "serving_g",
             "calories_kcal", "fiber_g", "protein_g", "iron_mg",
             "glycemic_index",
             "fermentation_score", "prebiotic_score", "inflammatory_index",
             "fasting_safe", "pregnancy_safe", "diabetes_friendly",
-            "planner_weekly_safe", "planner_daily_limit",             # ← planner
+            "planner_weekly_safe", "planner_daily_limit",
             "source_citation", "notes", "image_url", "is_active",
         ]
 
+    def _parse_names(self, obj: EthiopianFood):
+        # Safely check if fields exist on model to prevent 500 crashes
+        raw_en = getattr(obj, 'name_en', '') or ""
+        raw_am = getattr(obj, 'name_am', '') or ""
+        
+        if raw_en and raw_am:
+            return str(raw_en).strip(), str(raw_am).strip()
+
+        # Fallback: Extract from "Injera teff  [እንጀራ]" format
+        dn = getattr(obj, 'display_name', '') or ""
+        if dn and "[" in dn:
+            match = re.search(r"([^\[]+)\[([^\]]+)\]", dn)
+            if match:
+                return match.group(1).strip(), match.group(2).strip()
+
+        return dn.strip(), ""
+
+    def get_name_en(self, obj: EthiopianFood) -> str:
+        en, _ = self._parse_names(obj)
+        return en
+
+    def get_name_am(self, obj: EthiopianFood) -> str:
+        _, am = self._parse_names(obj)
+        return am
+
     def get_display_name_html(self, obj: EthiopianFood) -> str:
-        """
-        Wrap the Amharic name in <strong> for web rendering.
-        Plain English name stays unstyled.
-        """
-        if obj.name_am:
-            return (
-                f"{obj.name_en}&nbsp;&nbsp;"
-                f"<strong>{obj.name_am}</strong>"
-            )
-        return obj.name_en
+        en, am = self._parse_names(obj)
+        if am:
+            return f"<strong>{am}</strong>&nbsp;&nbsp;<span style='color: #6b7280;'>({en})</span>"
+        return en
 
 
 class FoodMinimalSerializer(serializers.ModelSerializer):
-    """Lightweight variant used inside MealLog and planner responses."""
-    display_name = serializers.SerializerMethodField()
+    """
+    Lightweight variant used inside dashboards and feed logs.
+    Guarantees name blocks are sent down to satisfy front-end layout engines.
+    """
+    name_en = serializers.SerializerMethodField()
+    name_am = serializers.SerializerMethodField()
 
     class Meta:
-        model  = EthiopianFood
+        model = EthiopianFood
         fields = [
-            "id", "slug", "display_name",
-            "category", "calories_kcal",
-            "fiber_g", "protein_g", "iron_mg",
+            "id", "slug", "display_name", "name_en", "name_am",
+            "category", "calories_kcal", "fiber_g", "protein_g", "iron_mg",
         ]
 
-    def get_display_name(self, obj: EthiopianFood) -> str:
-        return obj.get_display_name()
+    def _parse_names(self, obj: EthiopianFood):
+        raw_en = getattr(obj, 'name_en', '') or ""
+        raw_am = getattr(obj, 'name_am', '') or ""
+        
+        if raw_en and raw_am:
+            return str(raw_en).strip(), str(raw_am).strip()
+
+        dn = getattr(obj, 'display_name', '') or ""
+        if dn and "[" in dn:
+            match = re.search(r"([^\[]+)\[([^\]]+)\]", dn)
+            if match:
+                return match.group(1).strip(), match.group(2).strip()
+        return dn.strip(), ""
+
+    def get_name_en(self, obj: EthiopianFood) -> str:
+        en, _ = self._parse_names(obj)
+        return en
+
+    def get_name_am(self, obj: EthiopianFood) -> str:
+        _, am = self._parse_names(obj)
+        return am
 
 
 class MealLogFoodSerializer(serializers.ModelSerializer):
     food = FoodMinimalSerializer(read_only=True)
 
     class Meta:
-        model  = MealLogFood
+        model = MealLogFood
         fields = ["food", "servings"]
 
 
@@ -75,7 +109,7 @@ class MealLogSerializer(serializers.ModelSerializer):
     foods = MealLogFoodSerializer(source="meallogfood_set", many=True, read_only=True)
 
     class Meta:
-        model  = MealLog
+        model = MealLog
         fields = [
             "id", "date", "meal_type", "foods",
             "gut_score", "fiber_g_total", "protein_g_total",
@@ -85,10 +119,10 @@ class MealLogSerializer(serializers.ModelSerializer):
 
 
 class MealLogCreateSerializer(serializers.Serializer):
-    date      = serializers.DateField()
+    date = serializers.DateField()
     meal_type = serializers.ChoiceField(choices=MealLog.MEAL_TYPE_CHOICES)
-    notes     = serializers.CharField(required=False, allow_blank=True)
-    foods     = serializers.ListField(
+    notes = serializers.CharField(required=False, allow_blank=True)
+    foods = serializers.ListField(
         child=serializers.DictField(),
         min_length=1,
     )
@@ -96,7 +130,7 @@ class MealLogCreateSerializer(serializers.Serializer):
 
 class DailyNutritionSerializer(serializers.ModelSerializer):
     class Meta:
-        model  = DailyNutrition
+        model = DailyNutrition
         fields = [
             "date", "gut_score", "wellness_score",
             "fiber_g", "protein_g", "iron_mg",

@@ -1,14 +1,5 @@
-"""
-foods/views.py
-━━━━━━━━━━━━━━
-Food database, meal logging, daily/weekly nutrition.
-
-ALL food data comes from EthiopianFood records that were seeded by:
-  python manage.py parse_ephi_pdf [--update]
-
-No other seed file is imported here.
-"""
 from datetime import date, timedelta
+import re
 
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
@@ -30,12 +21,6 @@ from .scoring import compute_gut_score, FoodItem, UserContext
 class FoodListView(generics.ListAPIView):
     """
     GET /api/v1/foods/
-    Query params: category, fasting_safe, pregnancy_safe,
-                  diabetes_friendly, planner_weekly_safe, search
-
-    Searching matches name_en, name_am, and display_name so users
-    can search in Amharic or English.
-
     All data sourced from EPHI 2025 PDF via parse_ephi_pdf command.
     """
     serializer_class    = FoodSerializer
@@ -46,7 +31,7 @@ class FoodListView(generics.ListAPIView):
         "fasting_safe",
         "pregnancy_safe",
         "diabetes_friendly",
-        "planner_weekly_safe",      # ← new planner filter
+        "planner_weekly_safe",
     ]
     search_fields       = ["name_en", "name_am", "display_name"]
     pagination_class    = None
@@ -63,7 +48,7 @@ class FoodDetailView(generics.RetrieveAPIView):
     lookup_field       = "slug"
 
 
-# ── Meal Logging ──────────────────────────────────────────────────────────────
+# ── Meal Logging & Feed ───────────────────────────────────────────────────────
 
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
@@ -71,7 +56,6 @@ def log_meal(request):
     """
     POST /api/v1/foods/log/
     Accepts food_ids + servings → scoring engine → saves MealLog
-    → updates DailyNutrition aggregate → returns full score result.
     """
     serializer = MealLogCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -179,6 +163,18 @@ class MealLogListView(generics.ListAPIView):
         return qs
 
 
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def dashboard_feed(request):
+    """
+    GET /api/v1/foods/feed/
+    Serves the dashboard meal feed timeline. Maps to your log network parameters.
+    """
+    logs = MealLog.objects.filter(user=request.user).order_by("-date", "-created_at")[:15]
+    serializer = MealLogSerializer(logs, many=True)
+    return Response(serializer.data)
+
+
 # ── Daily / Weekly Nutrition ──────────────────────────────────────────────────
 
 @api_view(["GET"])
@@ -196,7 +192,7 @@ def daily_nutrition(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def weekly_nutrition(request):
-    """GET /api/v1/foods/weekly/ — returns last 7 days of DailyNutrition."""
+    """GET /api/v1/foods/weekly/"""
     today          = date.today()
     seven_days_ago = today - timedelta(days=6)
     records        = DailyNutrition.objects.filter(
@@ -222,26 +218,27 @@ def weekly_nutrition(request):
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _update_daily_nutrition(user, log_date, score_result):
-    """Upsert the DailyNutrition aggregate for a given day."""
+    """Upsert the DailyNutrition aggregate for a given day safely."""
     record, _ = DailyNutrition.objects.get_or_create(
         user    = user,
         date    = log_date,
-        defaults = {"gut_score": 0, "meal_count": 0},
+        defaults = {"gut_score": 0, "meal_count": 0, "fiber_g": 0, "protein_g": 0, "iron_mg": 0, "fermentation_total": 0, "inflammatory_net": 0},
     )
 
     all_today = MealLog.objects.filter(user=user, date=log_date)
     if all_today.exists():
-        record.gut_score = int(
-            sum(m.gut_score for m in all_today) / all_today.count()
-        )
-
-    record.fiber_g            += score_result.fiber_g
-    record.protein_g          += score_result.protein_g
-    record.iron_mg            += score_result.iron_mg
-    record.fermentation_total += score_result.fermentation_total
-    record.inflammatory_net   += score_result.inflammatory_net
-    record.meal_count         += 1
-    record.kuriftu_tip         = score_result.kuriftu_tip
+        count = all_today.count()
+        record.gut_score = int(sum(m.gut_score for m in all_today) / count)
+        
+        # Recalculate pure totals dynamically from logged historical rows instead of adding raw increments
+        record.fiber_g            = sum(m.fiber_g_total for m in all_today)
+        record.protein_g          = sum(m.protein_g_total for m in all_today)
+        record.iron_mg            = sum(m.iron_mg_total for m in all_today)
+        record.fermentation_total = sum(m.fermentation_total for m in all_today)
+        record.inflammatory_net   = sum(m.inflammatory_net for m in all_today)
+        record.meal_count         = count
+    
+    record.kuriftu_tip = score_result.kuriftu_tip
     record.save()
 
     profile = getattr(user, "profile", None)
