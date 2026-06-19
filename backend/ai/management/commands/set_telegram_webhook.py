@@ -1,4 +1,13 @@
-#backend/ai/management/commands/set_telegram_webhook.py
+"""
+ai/management/commands/set_telegram_webhook.py
+
+Usage:
+  python manage.py set_telegram_webhook https://yourapp.up.railway.app
+
+What it does:
+  Registers your Django endpoint with Telegram so messages flow to your app.
+  Only needs to run ONCE per deployment. Re-run if you change your domain.
+"""
 from django.core.management.base import BaseCommand
 from django.conf import settings
 import requests
@@ -31,7 +40,6 @@ class Command(BaseCommand):
             f"https://api.telegram.org/bot{token}/setWebhook",
             json={"url": webhook_url, "allowed_updates": ["message", "callback_query"]},
             timeout=10,
-            verify=False, 
         )
         result = response.json()
 
@@ -45,3 +53,5 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(
                 f"Failed: {result.get('description', 'Unknown error')}"
             ))
+
+

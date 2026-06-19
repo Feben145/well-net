@@ -78,6 +78,7 @@ export const foodService = {
 }
 
 // ── AI / Wellness ─────────────────────────────────────────────────────────────
+// ── AI / Wellness ─────────────────────────────────────────────────────────────
 export const aiService = {
   getTips: () => api.get<WellnessTipsResponse>("/ai/tips/"),
   getMealPlan: (days = 7) => api.post("/ai/meal-plan/", { days }),

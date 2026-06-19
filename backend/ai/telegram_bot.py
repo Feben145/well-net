@@ -1,4 +1,19 @@
-#backend/ai/telegram_bot.py
+"""
+ai/telegram_bot.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Well-Net Telegram Bot — full upgrade
+
+How it works:
+  1. User messages the bot
+  2. Telegram sends a POST to /api/v1/ai/telegram/
+  3. This module processes the update
+  4. Replies with text + inline keyboards where useful
+
+Two types of incoming updates:
+  - message: user typed something
+  - callback_query: user tapped an inline button
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
 import requests
 from django.conf import settings
 
