@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "experts",
     "packages",
     "notifications",
+    "community",
 ]
 
 MIDDLEWARE = [

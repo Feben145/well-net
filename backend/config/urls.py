@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/v1/experts/",   include("experts.urls")),
     path("api/v1/packages/",  include("packages.urls")),
     path("api/v1/notifications/", include("notifications.urls")),
+    path("api/v1/community/", include("community.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
