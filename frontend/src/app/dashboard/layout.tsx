@@ -15,6 +15,7 @@ import {
   X,
   TrendingUp,
   Leaf,
+  Globe,
   UserCircle,
 } from "lucide-react"
 
@@ -77,6 +78,11 @@ const NAV = [
     label: "Kuriftu deals",
     icon: Bell,
   },
+   { section: "Insights",
+      href: "/dashboard/community",
+       label: "Community 🌿", 
+         icon: Globe  
+          },
 ]
 
 const SECTIONS = ["Wellness", "Insights", "Services"]

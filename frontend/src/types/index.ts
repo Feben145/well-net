@@ -43,32 +43,55 @@ export type DietType =
   | "no_pork" | "diabetic"
 
 // ── Food ──────────────────────────────────────────────────────────────────────
+/**
+ * Aligned to the finalized EPHI 2025 structural router config.
+ * Handled groups: grains, legumes, vegetables, meat (including group 09 fish), 
+ * dairy_poultry, drinks (group 12 beverages), and special (tubers, fats, sugars, flours).
+ */
 export type FoodCategory =
-  | "grains" | "legumes" | "meat" | "dairy"
-  | "vegetables" | "drinks" | "special"
+  | "grains"
+  | "legumes"
+  | "vegetables"
+  | "meat"
+  | "dairy_poultry"
+  | "drinks"
+  | "special";
 
 export interface EthiopianFood {
-  id: string
-  slug: string
-  name_en: string
-  name_am: string
-  display_name: string
+  id: number | string       // Supports standard database IDs
+  slug: string              // State-specific slug identifier (e.g., 'beef_liver_boiled_drained')
+  source: string            // E.g., 'ephi'
+  name_en: string           // Clean, isolated English parent item name
+  name_am: string           // Pristine, full Amharic name description (supports Amharic typography hierarchy)
+  display_name: string      // Bilingual structured display name used in search results
+  category: FoodCategory    // Aligned to the multi-form router configuration
+  preparation_state?: string | null; // Raw string token representing the operational culinary status
+  serving_description: string // Exact preparation form state label (e.g., 'Per 100g edible portion (grilled)')
+  serving_g: number          // Base allocation metrics (usually 100.0)
   is_active: boolean
-  category: FoodCategory
-  serving_description: string
-  fiber_g: number
-  protein_g: number
-  iron_mg: number
+
+  // Macronutrients & Primary Micro
   calories_kcal: number
-  fermentation_score: number   // 0–3
-  inflammatory_index: number   // -2 to +2
-  prebiotic_score: number      // 0–3
+  protein_g: number
+  fat_g: number
+  cho_g: number
+  fiber_g: number
+  iron_mg: number
+
+  // Composition Matrix Metrics
   glycemic_index: number
-  fasting_safe: boolean
-  pregnancy_safe: boolean
-  diabetes_friendly: boolean
-  notes: string
-  source_citation: string
+  fermentation_score: number // 0–3 (None, Low, Medium, High)
+  prebiotic_score: number     // 0–3
+  inflammatory_index: number // -2 (Anti-inflammatory) to +2 (Pro-inflammatory)
+
+  // Health Guardrails & Dynamic Restriction Flags
+  fasting_safe: boolean     // Enforces strict Orthodox dietary restrictions
+  pregnancy_safe: boolean   // Explicitly locks out raw meats and regional alcohols
+  diabetes_friendly: boolean // Evaluated against active GI and CHO limits
+
+  // Tracking Metadata
+  notes: string            // Summarized nutritional snapshot context
+  source_citation: string  // Corresponds to the unique 6-digit EPHI identifier row
 }
 
 export interface FoodLogItem {

@@ -1,73 +1,78 @@
 "use client"
+
 import { useEffect, useState, useMemo } from "react"
-import { Search, X, ExternalLink, BookOpen, Leaf, ShoppingCart, ChevronDown } from "lucide-react"
+import { Search, X, ExternalLink, BookOpen, Leaf, ShoppingCart } from "lucide-react"
 import { foodService, extractArray } from "@/services/wellnet"
 import type { EthiopianFood } from "@/types"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useMealLogStore } from "@/store"
+import FoodName from "@/components/food/FoodName"
 import { useRouter } from "next/navigation"
 
 // ── Category config ───────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { id: "all",        label: "All",        emoji: "🌍" },
-  { id: "grains",     label: "Grains",     emoji: "🌾" },
-  { id: "legumes",    label: "Legumes",    emoji: "🫘" },
-  { id: "meat",       label: "Meat",       emoji: "🍖" },
-  { id: "dairy",      label: "Dairy",      emoji: "🥛" },
-  { id: "vegetables", label: "Vegetables", emoji: "🥦" },
-  { id: "drinks",     label: "Drinks",     emoji: "☕" },
-  { id: "special",    label: "Special",    emoji: "✨" },
-]
+  { id: "all",           label: "All Foods",        emoji: "🌍" },
+  { id: "grains",        label: "Grains & Teff",    emoji: "🌾" },
+  { id: "legumes",       label: "Legumes / Wot",    emoji: "🫘" },
+  { id: "meat",          label: "Meat & Fish",      emoji: "🍖" }, 
+  { id: "dairy_poultry", label: "Dairy & Poultry",  emoji: "🥛" }, 
+  { id: "vegetables",    label: "Vegetables",       emoji: "🥦" },
+  { id: "drinks",        label: "Beverages",        emoji: "☕" }, 
+  { id: "special",       label: "Special/Fats",     emoji: "✨" }, 
+] as const
 
 const CAT_COLOR: Record<string, { bg: string; text: string; border: string; bar: string }> = {
-  grains:     { bg:"bg-amber-50",   text:"text-amber-700",   border:"border-amber-200",  bar:"bg-amber-500"  },
-  legumes:    { bg:"bg-wellnet-50", text:"text-wellnet-700", border:"border-wellnet-200",bar:"bg-wellnet-500" },
-  meat:       { bg:"bg-red-50",     text:"text-red-700",     border:"border-red-200",    bar:"bg-red-500"    },
-  dairy:      { bg:"bg-blue-50",    text:"text-blue-700",    border:"border-blue-200",   bar:"bg-blue-500"   },
-  vegetables: { bg:"bg-green-50",   text:"text-green-700",   border:"border-green-200",  bar:"bg-green-600"  },
-  drinks:     { bg:"bg-purple-50",  text:"text-purple-700",  border:"border-purple-200", bar:"bg-purple-500" },
-  special:    { bg:"bg-orange-50",  text:"text-orange-700",  border:"border-orange-200", bar:"bg-orange-500" },
+  grains:        { bg:"bg-amber-50",   text:"text-amber-700",   border:"border-amber-200",   bar:"bg-amber-500"  },
+  legumes:       { bg:"bg-wellnet-50", text:"text-wellnet-700", border:"border-wellnet-200", bar:"bg-wellnet-500" },
+  meat:          { bg:"bg-red-50",     text:"text-red-700",     border:"border-red-200",     bar:"bg-red-500"    },
+  dairy_poultry: { bg:"bg-blue-50",    text:"text-blue-700",    border:"border-blue-200",    bar:"bg-blue-500"   }, 
+  vegetables:    { bg:"bg-green-50",   text:"text-green-700",   border:"border-green-200",   bar:"bg-green-600"  },
+  drinks:        { bg:"bg-purple-50",  text:"text-purple-700",  border:"border-purple-200",  bar:"bg-purple-500" }, 
+  special:       { bg:"bg-orange-50",  text:"text-orange-700",  border:"border-orange-200",  bar:"bg-orange-500" },
 }
 
+// Recipes per slug — curated for the hackathon demo
 const RECIPES: Record<string, { name: string; steps: string }[]> = {
-  injera: [
+  injera:       [
     { name:"Classic injera + misir wot", steps:"Tear injera, scoop misir wot and ayib. Eat together — the teff soaks up the berbere." },
     { name:"Breakfast injera roll",      steps:"Roll injera with scrambled eggs, tomato, and a pinch of berbere. Serve with buna." },
     { name:"Injera pizza (fasting)",     steps:"Lay injera flat, top with gomen, fasolia, kik alicha. Drizzle with olive oil." },
   ],
-  misir_wot: [
-    { name:"Misir wot fasting bowl", steps:"Serve over injera with shiro and gomen. Add a squeeze of lemon for brightness." },
-    { name:"Misir soup",             steps:"Thin with water, add tomato and onion. Simmer 15 min. Serve with dabo." },
+  misir_wot:    [
+    { name:"Misir wot fasting bowl",     steps:"Serve over injera with shiro and gomen. Add a squeeze of lemon for brightness." },
+    { name:"Misir soup",                 steps:"Thin with water, add tomato and onion. Simmer 15 min. Serve with dabo." },
   ],
-  shiro: [
-    { name:"Shiro firfir", steps:"Mix torn injera pieces into hot shiro. Add niter kibbeh. Eat immediately." },
-    { name:"Shiro dip",    steps:"Cool shiro, mix with lemon and garlic. Serve as dip with dabo slices." },
+  shiro:        [
+    { name:"Shiro firfir",               steps:"Mix torn injera pieces into hot shiro. Add niter kibbeh. Eat immediately." },
+    { name:"Shiro dip",                  steps:"Cool shiro, mix with lemon and garlic. Serve as dip with dabo slices." },
   ],
-  teff_porridge: [
-    { name:"Sweetened genfo", steps:"Cook teff porridge, stir in honey and niter kibbeh. Top with ergo. Great for elders and children." },
+  teff_porridge:[
+    { name:"Sweetened genfo",            steps:"Cook teff porridge, stir in honey and niter kibbeh. Top with ergo. Great for elders and children." },
   ],
-  gomen: [
-    { name:"Gomen be tibs", steps:"Sauté gomen with garlic and ginger. Add tibs pieces at the end. Serve with injera." },
-    { name:"Fasting gomen", steps:"Cook with onion, garlic, and vegetable oil. Add a squeeze of lemon before serving." },
+  gomen:        [
+    { name:"Gomen be tibs",              steps:"Sauté gomen with garlic and ginger. Add tibs pieces at the end. Serve with injera." },
+    { name:"Fasting gomen",              steps:"Cook with onion, garlic, and vegetable oil. Add a squeeze of lemon before serving." },
   ],
-  ayib:         [{ name:"Ayib with greens",         steps:"Crumble fresh ayib over gomen or fasolia. The mild cheese balances spicy dishes perfectly." }],
-  ergo:         [{ name:"Ergo with honey",           steps:"Serve cold ergo in a clay cup, drizzle with Ethiopian honey. Breakfast staple." }],
-  buna:         [{ name:"Ethiopian coffee ceremony", steps:"Roast, grind, and brew in jebena. Serve 3 rounds: Abol, Tona, Bereka. Add sugar or salt." }],
+  ayib:         [
+    { name:"Ayib with greens",           steps:"Crumble fresh ayib over gomen or fasolia. The mild cheese balances spicy dishes perfectly." },
+  ],
+  ergo:         [
+    { name:"Ergo with honey",            steps:"Serve cold ergo in a clay cup, drizzle with Ethiopian honey. Breakfast staple." },
+  ],
+  buna:         [
+    { name:"Ethiopian coffee ceremony",  steps:"Roast, grind, and brew in jebena. Serve 3 rounds: Abol, Tona, Bereka. Add sugar or salt." },
+  ],
 }
 
 const SOURCE_LINKS: Record<string, string> = {
-  "EPHI 2025":               "https://www.ephi.gov.et",
-  "EPHI EFCT 2025":          "https://www.ephi.gov.et",
-  "PMC12524473":             "https://pmc.ncbi.nlm.nih.gov/articles/PMC12524473/",
-  "PMC6948299":              "https://pmc.ncbi.nlm.nih.gov/articles/PMC6948299/",
-  "PMC8140839":              "https://pmc.ncbi.nlm.nih.gov/articles/PMC8140839/",
-  "FAO":                     "https://www.fao.org/faostat/en/#data",
-  "USDA":                    "https://fdc.nal.usda.gov/",
+  "PMC12524473": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12524473/",
+  "PMC6948299":  "https://pmc.ncbi.nlm.nih.gov/articles/PMC6948299/",
+  "PMC8140839":  "https://pmc.ncbi.nlm.nih.gov/articles/PMC8140839/",
+  "FAO":         "https://www.fao.org/faostat/en/#data",
+  "USDA":        "https://fdc.nal.usda.gov/",
   "Heritage Nutrition 2023": "https://heritagenutrition.co.uk/the-ethiopian-dietary-pattern-a-nutritional-blueprint-for-well-being/",
 }
-
-const PAGE_SIZE = 30
 
 function scoreColor(score: number) {
   if (score >= 75) return "text-wellnet-600"
@@ -77,66 +82,36 @@ function scoreColor(score: number) {
 
 function inflammText(idx: number) {
   if (idx <= -2) return { label: "Strong anti-inflammatory", color: "text-wellnet-600" }
-  if (idx === -1) return { label: "Anti-inflammatory",       color: "text-wellnet-600" }
-  if (idx === 0)  return { label: "Neutral",                 color: "text-gray-500"    }
-  if (idx === 1)  return { label: "Mildly inflammatory",     color: "text-amber-600"   }
-  return                 { label: "Inflammatory",            color: "text-red-600"     }
+  if (idx === -1) return { label: "Anti-inflammatory",        color: "text-wellnet-600" }
+  if (idx === 0)  return { label: "Neutral",                                 color: "text-gray-500" }
+  if (idx === 1)  return { label: "Mildly inflammatory",     color: "text-amber-600" }
+  return              { label: "Inflammatory",            color: "text-red-600" }
 }
 
 function singleFoodScore(food: EthiopianFood): number {
-  const fs  = Math.min(food.fiber_g / 25, 1)
-  const fes = Math.min(food.fermentation_score / 6, 1)
-  const is  = Math.max(0, Math.min(1, (4 - food.inflammatory_index) / 8))
-  const ps  = Math.min(food.protein_g / 50, 1)
+  const fs  = Math.min((food.fiber_g || 0) / 25, 1)
+  const fes = Math.min((food.fermentation_score || 0) / 6, 1)
+  const is  = Math.max(0, Math.min(1, (4 - (food.inflammatory_index || 0)) / 8))
+  const ps  = Math.min((food.protein_g || 0) / 50, 1)
   return Math.round((fs * 0.4 + fes * 0.3 + is * 0.2 + ps * 0.1) * 100)
 }
 
-/**
- * Parse display_name from the API: "Injera teff  [እንጀራ]"
- * Returns { english, amharic } so we can bold the Amharic part independently.
- * Falls back to name_en / name_am if display_name is absent.
- */
-function parseDisplayName(food: EthiopianFood): { english: string; amharic: string } {
-  const raw = food.display_name || food.name_en
-  const bracketMatch = raw.match(/^(.*?)\s*\[([^\]]+)\]\s*$/)
-  if (bracketMatch) {
-    return {
-      english: bracketMatch[1].trim(),
-      amharic: bracketMatch[2].trim(),
-    }
-  }
-  // No bracket form — fall back
-  return {
-    english: food.name_en,
-    amharic: food.name_am || "",
-  }
+function foodNameText(food: EthiopianFood) {
+  return food.name_en || food.name_am || "Food"
 }
 
-/**
- * Clean English portion for compact card display:
- * strips trailing descriptor clauses like "raw", "boiled drained without salt", etc.
- */
-function shortEnglishName(english: string): string {
-  return english
-    .split(/\s*(?:—|–)\s*/)[0]   // remove " — subtitle"
-    .split(/\s*,\s*(?:raw|boiled|grilled|dried|fresh|peeled|whole|split|flour|stew|sauce)/i)[0]
-    .trim()
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function FoodsPage() {
   const router = useRouter()
   const { addFood } = useMealLogStore()
 
-  const [foods,     setFoods]     = useState<EthiopianFood[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [query,     setQuery]     = useState("")
-  const [category,  setCategory]  = useState("all")
-  const [fasting,   setFasting]   = useState(false)
-  const [pregnancy, setPregnancy] = useState(false)
-  const [diabetes,  setDiabetes]  = useState(false)
-  const [selected,  setSelected]  = useState<EthiopianFood | null>(null)
-  const [page,      setPage]      = useState(1)
+  const [foods,      setFoods]      = useState<EthiopianFood[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [query,      setQuery]      = useState("")
+  const [category,   setCategory]   = useState("all")
+  const [fasting,    setFasting]    = useState(false)
+  const [pregnancy,  setPregnancy]  = useState(false)
+  const [diabetes,   setDiabetes]   = useState(false)
+  const [selected,   setSelected]   = useState<EthiopianFood | null>(null)
 
   useEffect(() => {
     foodService.list()
@@ -145,48 +120,83 @@ export default function FoodsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Reset page when filters change
-  useEffect(() => { setPage(1) }, [query, category, fasting, pregnancy, diabetes])
-
   const filtered = useMemo(() => {
     return foods.filter(f => {
-      if (category !== "all" && f.category !== category) return false
-      if (fasting   && !f.fasting_safe)      return false
-      if (pregnancy && !f.pregnancy_safe)    return false
-      if (diabetes  && !f.diabetes_friendly) return false
+      const nameLower = (f.name_en || "").toLowerCase()
+      let dbCategory = (f.category || "").toLowerCase().trim()
+      
+      if (nameLower.includes("carp") || nameLower.includes("fish") || nameLower.includes("fillet")) {
+        dbCategory = "meat"
+      }
+
+      let resolvedCategory = dbCategory
+      if (dbCategory === "dairy") {
+        resolvedCategory = "dairy_poultry"
+      } else if (dbCategory === "beverage") {
+        resolvedCategory = "drinks"
+      }
+
+      if (pregnancy) {
+        const isAlcoholic = 
+          nameLower.includes("vodka") ||
+          nameLower.includes("tella") || 
+          nameLower.includes("tej") || 
+          nameLower.includes("katikala") || 
+          nameLower.includes("beer") || 
+          nameLower.includes("wine") || 
+          nameLower.includes("alcohol")
+          
+        if (isAlcoholic || !f.pregnancy_safe) return false
+      }
+
+      if (category !== "all" && resolvedCategory !== category) return false
+      
+      if (fasting   && !f.fasting_safe)       return false
+      if (diabetes  && !f.diabetes_friendly)  return false
+
       if (query) {
         const q = query.toLowerCase()
         return (
-          f.name_en.toLowerCase().includes(q) ||
-          (f.name_am || "").toLowerCase().includes(q) ||
-          (f.display_name || "").toLowerCase().includes(q) ||
-          f.category.toLowerCase().includes(q) ||
-          (f.notes || "").toLowerCase().includes(q)
+          f.name_en?.toLowerCase().includes(q) ||
+          f.name_am?.toLowerCase().includes(q) ||
+          f.notes?.toLowerCase().includes(q)
         )
       }
+      
       return true
     })
   }, [foods, category, query, fasting, pregnancy, diabetes])
 
-  const paginated = useMemo(
-    () => filtered.slice(0, page * PAGE_SIZE),
-    [filtered, page]
-  )
-
+  // ── FIX TS(2345): Explicit lookup handling string/number variants cleanly ──
   const handleAddToLog = (food: EthiopianFood) => {
-    addFood(food)
-    // Use the Amharic name if present, otherwise the clean English name
-    const { english, amharic } = parseDisplayName(food)
-    toast.success(`${amharic || shortEnglishName(english)} added to your meal`)
+    // Normalizing the payload configuration guarantees the exact primitive type matches requirements
+    const typeSafeFood = {
+      ...food,
+      id: String(food.id)
+    }
+    addFood(typeSafeFood)
+    toast.success(`${foodNameText(food)} added to your meal log`)
     setSelected(null)
     router.push("/dashboard/log")
   }
 
-  const c = (food: EthiopianFood) => CAT_COLOR[food.category] ?? CAT_COLOR.legumes
+  const c = (food: EthiopianFood) => {
+    const nameLower = (food.name_en || "").toLowerCase()
+    let rawCat = (food.category || "").toLowerCase().trim()
+    
+    if (nameLower.includes("carp") || nameLower.includes("fish") || nameLower.includes("fillet")) {
+      rawCat = "meat"
+    }
 
+    let resolvedKey = rawCat
+    if (rawCat === "dairy") resolvedKey = "dairy_poultry"
+    if (rawCat === "beverage") resolvedKey = "drinks"
+    
+    return CAT_COLOR[resolvedKey] ?? CAT_COLOR.legumes
+  }
+  
   return (
     <div className="space-y-5">
-
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -194,21 +204,8 @@ export default function FoodsPage() {
           Ethiopian Food Database
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          {foods.length} verified foods · EPHI 2025, FAO, PMC, USDA & Heritage Nutrition
+          {foods.length} verified foods · sourced from FAO, PMC, USDA & Heritage Nutrition
         </p>
-      </div>
-
-      {/* EPHI badge */}
-      <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
-        <span className="text-lg shrink-0">🇪🇹</span>
-        <div>
-          <div className="text-xs font-semibold text-green-800">
-            Powered by EPHI Food Composition Table 2025
-          </div>
-          <div className="text-[10px] text-green-600 mt-0.5">
-            Ethiopia's official nutrition authority · 437 lab-verified foods · per 100g edible portion
-          </div>
-        </div>
       </div>
 
       {/* Search */}
@@ -217,8 +214,8 @@ export default function FoodsPage() {
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search in English or አማርኛ…"
-          className="input pl-9 pr-9"
+          placeholder="Search by name, Amharic, or category…"
+          className="w-full bg-white border border-gray-200 rounded-xl py-2 pl-9 pr-9 text-sm focus:outline-none focus:border-wellnet-400 transition-colors"
         />
         {query && (
           <button
@@ -239,7 +236,7 @@ export default function FoodsPage() {
             className={cn(
               "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all",
               category === cat.id
-                ? "bg-gray-900 text-white border-gray-900"
+                ? "bg-gray-900 text-white border-gray-900 shadow-sm"
                 : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
             )}
           >
@@ -251,7 +248,7 @@ export default function FoodsPage() {
       {/* Filter toggles */}
       <div className="flex gap-3 flex-wrap">
         {[
-          { label: "✦ Fasting-safe",       val: fasting,   set: setFasting   },
+          { label: "✦ Fasting-safe",        val: fasting,   set: setFasting   },
           { label: "🤰 Pregnancy-safe",    val: pregnancy, set: setPregnancy },
           { label: "🩸 Diabetes-friendly", val: diabetes,  set: setDiabetes  },
         ].map(({ label, val, set }) => (
@@ -261,14 +258,14 @@ export default function FoodsPage() {
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all",
               val
-                ? "bg-wellnet-500 text-white border-wellnet-500"
+                ? "bg-wellnet-500 text-white border-wellnet-500 shadow-sm"
                 : "bg-white text-gray-600 border-gray-200 hover:border-wellnet-300"
             )}
           >
             {label}
           </button>
         ))}
-        <span className="text-xs text-gray-400 self-center">
+        <span className="text-xs text-gray-400 self-center font-medium">
           {filtered.length} result{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -277,295 +274,275 @@ export default function FoodsPage() {
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[...Array(9)].map((_, i) => (
-            <div key={i} className="h-36 bg-gray-100 rounded-2xl animate-pulse" />
+            <div key={i} className="h-36 bg-gray-50 border border-gray-100 rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-10">
-          <Leaf className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-gray-500">No foods match your filters.</p>
+        <div className="card text-center py-12 border border-dashed rounded-2xl bg-gray-50/50">
+          <Leaf className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500 font-medium">No foods match your active configuration matrices.</p>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {paginated.map(food => {
-              const col   = c(food)
-              const score = singleFoodScore(food)
-              const { english, amharic } = parseDisplayName(food)
-              return (
-                <button
-                  key={food.id}
-                  onClick={() => setSelected(food)}
-                  className={cn(
-                    "text-left p-3.5 rounded-2xl border transition-all hover:shadow-md active:scale-95",
-                    col.bg, col.border
-                  )}
-                >
-                  {/* Name — Amharic bold, English below */}
-                  {amharic && (
-                    <div className={cn("text-sm font-bold leading-tight", col.text)}>
-                      {amharic}
-                    </div>
-                  )}
-                  <div className={cn(
-                    "text-xs font-medium text-gray-700 leading-tight line-clamp-2",
-                    amharic ? "mt-0.5" : "mt-0"
-                  )}>
-                    {shortEnglishName(english)}
-                  </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {filtered.map(food => {
+            const col   = c(food)
+            const score = singleFoodScore(food)
+            return (
+              <button
+                key={String(food.id)}
+                onClick={() => setSelected(food)}
+                className={cn(
+                  "text-left p-3.5 rounded-2xl border transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95 flex flex-col justify-between",
+                  col.bg, col.border
+                )}
+              >
+                <div className="w-full">
+                  <FoodName food={food} className="leading-snug line-clamp-2" />
 
-                  {/* Category badge */}
                   <span className={cn(
-                    "inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-1.5 uppercase tracking-wide",
-                    col.bg, col.text
+                    "inline-block text-[9px] font-bold px-2 py-0.5 rounded-md mt-2 uppercase tracking-wider",
+                    "bg-white/80 backdrop-blur-sm shadow-sm border border-black/5", col.text
                   )}>
-                    {food.category}
+                    {food.category || "General"}
                   </span>
 
-                  {/* Nutrition bars */}
-                  <div className="mt-2.5 space-y-1">
+                  {/* Top 3 nutrition bars */}
+                  <div className="mt-3 space-y-1.5">
                     {[
-                      { label: "Fiber",   val: food.fiber_g,   max: 25, unit: "g"  },
-                      { label: "Protein", val: food.protein_g, max: 50, unit: "g"  },
-                      { label: "Iron",    val: food.iron_mg,   max: 18, unit: "mg" },
-                    ].map(({ label, val, max, unit }) => (
+                      { label: "Fiber",   val: food.fiber_g,   max: 25 },
+                      { label: "Protein", val: food.protein_g, max: 50 },
+                      { label: "Iron",    val: food.iron_mg,   max: 18 },
+                    ].map(({ label, val, max }) => (
                       <div key={label}>
-                        <div className="flex justify-between text-[9px] text-gray-500 mb-0.5">
+                        <div className="flex justify-between text-[9px] text-gray-500 mb-0.5 font-medium">
                           <span>{label}</span>
-                          <span className="font-medium">{val}{unit}</span>
+                          <span className="font-semibold tabular-nums">{val || 0}g</span>
                         </div>
                         <div className="h-1 bg-white/60 rounded-full overflow-hidden">
                           <div
-                            className={cn("h-full rounded-full", col.bar)}
-                            style={{ width: `${Math.min((val / max) * 100, 100)}%` }}
+                            className={cn("h-full rounded-full transition-all duration-300", col.bar)}
+                            style={{ width: `${Math.min(((val || 0) / max) * 100, 100)}%` }}
                           />
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
 
-                  {/* Flags */}
-                  <div className="flex gap-1 mt-2 flex-wrap">
-                    {food.fermentation_score > 0 && (
-                      <span className="text-[9px] bg-white/70 text-wellnet-700 px-1.5 py-0.5 rounded-full font-medium">
+                <div className="w-full mt-3">
+                  {/* Bottom chips flags block */}
+                  <div className="flex gap-1 flex-wrap">
+                    {(food.fermentation_score || 0) > 0 && (
+                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-wellnet-700 px-1.5 py-0.5 rounded-md font-semibold">
                         🧫 Fermented
                       </span>
                     )}
                     {food.fasting_safe && (
-                      <span className="text-[9px] bg-white/70 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-amber-700 px-1.5 py-0.5 rounded-md font-semibold">
                         ✦ Fasting
                       </span>
                     )}
-                    {food.glycemic_index > 0 && (
-                      <span className="text-[9px] bg-white/70 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
+                    {(food.glycemic_index || 0) > 0 && (
+                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-gray-600 px-1.5 py-0.5 rounded-md font-semibold tabular-nums">
                         GI {food.glycemic_index}
                       </span>
                     )}
                   </div>
 
-                  {/* Gut score */}
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[9px] text-gray-400">Gut score</span>
+                  {/* Gut contribution output indicators */}
+                  <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between">
+                    <span className="text-[9px] text-gray-400 font-medium">Gut Index</span>
                     <span className={cn("text-xs font-bold tabular-nums", scoreColor(score))}>
                       {score}/100
                     </span>
                   </div>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Load more */}
-          {paginated.length < filtered.length && (
-            <button
-              onClick={() => setPage(p => p + 1)}
-              className="w-full btn-secondary py-3 text-sm flex items-center justify-center gap-2"
-            >
-              <ChevronDown className="w-4 h-4" />
-              Load more ({filtered.length - paginated.length} remaining)
-            </button>
-          )}
-        </>
+                </div>
+              </button>
+            )
+          })}
+        </div>
       )}
 
-      {/* ── Detail modal ──────────────────────────────────────────────────── */}
-      {selected && (() => {
-        const { english, amharic } = parseDisplayName(selected)
-        return (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/30"
-            onClick={e => { if (e.target === e.currentTarget) setSelected(null) }}
-          >
-            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+     {/* ── Detail modal ────────────────────────────────────────── */}
+{selected && (
+  <div
+    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+    onClick={e => { if (e.target === e.currentTarget) setSelected(null) }}
+  >
+    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto border border-gray-100">
 
-              {/* Modal header */}
-              <div className={cn("px-6 pt-6 pb-4 rounded-t-3xl", c(selected).bg)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    {/* Amharic name — bold, large */}
-                    {amharic && (
-                      <div className={cn("text-2xl font-bold mb-1 leading-tight", c(selected).text)}>
-                        {amharic}
-                      </div>
-                    )}
-                    {/* English name — clean, no trailing descriptors for the heading */}
-                    <div className="text-base font-semibold text-gray-800 leading-snug">
-                      {english}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {selected.serving_description}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setSelected(null)}
-                    className="w-8 h-8 rounded-full bg-white/60 flex items-center justify-center shrink-0"
-                  >
-                    <X className="w-4 h-4 text-gray-600" />
-                  </button>
-                </div>
-
-                {/* Flags */}
-                <div className="flex gap-1.5 mt-3 flex-wrap">
-                  <span className={cn("badge-teal border text-xs", c(selected).border, c(selected).text, "bg-white/60")}>
-                    {selected.category}
-                  </span>
-                  {selected.fasting_safe      && <span className="badge-amber text-xs">✦ Fasting-safe</span>}
-                  {selected.pregnancy_safe    && <span className="badge-purple text-xs">🤰 Pregnancy-safe</span>}
-                  {selected.diabetes_friendly && <span className="badge-teal text-xs">🩸 Diabetes-friendly</span>}
-                  {selected.fermentation_score > 0 && <span className="badge-teal text-xs">🧫 Fermented</span>}
-                </div>
-              </div>
-
-              <div className="px-6 py-5 space-y-5">
-
-                {/* Nutrition table */}
-                <div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                    Nutrition per serving
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: "Calories",       val: `${selected.calories_kcal} kcal`,                              key: "calories" },
-                      { label: "Fiber",          val: `${selected.fiber_g}g`,                                         key: "fiber"    },
-                      { label: "Protein",        val: `${selected.protein_g}g`,                                       key: "protein"  },
-                      { label: "Iron",           val: `${selected.iron_mg}mg`,                                        key: "iron"     },
-                      { label: "Glycemic index", val: selected.glycemic_index > 0 ? String(selected.glycemic_index) : "—", key: "gi" },
-                      { label: "Fermentation",   val: `${selected.fermentation_score}/3`,                             key: "ferm"     },
-                      { label: "Prebiotics",     val: `${selected.prebiotic_score}/3`,                                key: "pre"      },
-                      { label: "Inflammation",   val: inflammText(selected.inflammatory_index).label,                 key: "inf"      },
-                    ].map(({ label, val, key }) => (
-                      <div key={key} className="bg-gray-50 rounded-xl px-3 py-2.5">
-                        <div className="text-[10px] text-gray-400 mb-0.5">{label}</div>
-                        <div className={cn(
-                          "text-sm font-bold",
-                          key === "inf" ? inflammText(selected.inflammatory_index).color : "text-gray-800"
-                        )}>
-                          {val}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Nutrition bars */}
-                <div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                    % of daily target (per serving)
-                  </h3>
-                  {[
-                    { label: "Fiber",   val: selected.fiber_g,   max: 25, unit: "g"  },
-                    { label: "Protein", val: selected.protein_g, max: 50, unit: "g"  },
-                    { label: "Iron",    val: selected.iron_mg,   max: 18, unit: "mg" },
-                  ].map(({ label, val, max, unit }) => (
-                    <div key={label} className="mb-2.5">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-600 font-medium">{label}</span>
-                        <span className="text-gray-400 tabular-nums">
-                          {val}{unit} / {max}{unit}
-                          <span className="ml-1 font-bold text-gray-700">
-                            ({Math.round((val / max) * 100)}%)
-                          </span>
-                        </span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={cn("h-full rounded-full transition-all", c(selected).bar)}
-                          style={{ width: `${Math.min((val / max) * 100, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Notes */}
-                {selected.notes && (
-                  <div className={cn("rounded-2xl p-4 border", c(selected).bg, c(selected).border)}>
-                    <div className={cn("text-xs font-bold mb-1.5 uppercase tracking-wide", c(selected).text)}>
-                      Why it's good for your gut
-                    </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{selected.notes}</p>
-                  </div>
-                )}
-
-                {/* Recipes */}
-                {RECIPES[selected.slug]?.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                      Recipe ideas
-                    </h3>
-                    <div className="space-y-2">
-                      {RECIPES[selected.slug].map((r, i) => (
-                        <div key={i} className="bg-gray-50 rounded-xl p-3">
-                          <div className="text-sm font-semibold text-gray-800 mb-1">{r.name}</div>
-                          <p className="text-xs text-gray-500 leading-relaxed">{r.steps}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sources */}
-                {selected.source_citation && (
-                  <div>
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Verified sources
-                    </h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selected.source_citation.split(",").map(s => {
-                        const src = s.trim()
-                        const key = Object.keys(SOURCE_LINKS).find(k => src.includes(k))
-                        const url = key ? SOURCE_LINKS[key] : null
-                        return url ? (
-                          <a
-                            key={src}
-                            href={url}
-                            target="_blank"
-                            rel="noopener"
-                            className="flex items-center gap-1 badge-teal hover:bg-wellnet-100 transition-colors"
-                          >
-                            {src} <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        ) : (
-                          <span key={src} className="badge-teal">{src}</span>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Add to log */}
-                <button
-                  onClick={() => handleAddToLog(selected)}
-                  className="w-full btn-primary flex items-center justify-center gap-2 py-3"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  Add to today's meal log
-                </button>
-              </div>
+      {/* Modal header */}
+      <div className={cn("px-6 pt-6 pb-4 rounded-t-3xl border-b border-black/5", c(selected).bg)}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <FoodName food={selected} className="leading-snug text-lg font-bold text-gray-900" />
+            <div className="text-xs text-gray-500 mt-0.5 font-medium">
+              {selected.serving_description || "Standard 100g portion sizing"}
             </div>
           </div>
-        )
-      })()}
+          <button
+            onClick={() => setSelected(null)}
+            className="w-8 h-8 rounded-full bg-white/80 shadow-sm border border-black/5 flex items-center justify-center shrink-0 hover:bg-white transition-colors"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+
+        {/* Quick flags array list */}
+        <div className="flex gap-1.5 mt-3.5 flex-wrap">
+          <span className={cn("text-xs font-bold px-2.5 py-0.5 rounded-md border shadow-sm bg-white/80 capitalize", c(selected).text, c(selected).border)}>
+            {selected.category || "General Food"}
+          </span>
+          {selected.fasting_safe      && <span className="text-xs font-semibold bg-amber-100/80 border border-amber-200 text-amber-800 px-2.5 py-0.5 rounded-md shadow-sm">✦ Fasting-safe</span>}
+          {selected.pregnancy_safe    && <span className="text-xs font-semibold bg-purple-100/80 border border-purple-200 text-purple-800 px-2.5 py-0.5 rounded-md shadow-sm">🤰 Pregnancy-safe</span>}
+          {selected.diabetes_friendly && <span className="text-xs font-semibold bg-teal-100/80 border border-teal-200 text-teal-800 px-2.5 py-0.5 rounded-md shadow-sm">🩸 Diabetes-friendly</span>}
+          {(selected.fermentation_score || 0) > 0 && <span className="text-xs font-semibold bg-wellnet-100/80 border border-wellnet-200 text-wellnet-800 px-2.5 py-0.5 rounded-md shadow-sm">🧫 Fermented</span>}
+        </div>
+      </div>
+
+      <div className="px-6 py-5 space-y-5">
+        {/* Nutritional Breakdown Grid */}
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+            Nutritional Facts
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Calories",      val: `${selected.calories_kcal || 0} kcal`,               key: "calories" },
+              { label: "Fiber",          val: `${selected.fiber_g || 0}g`,                        key: "fiber" },
+              { label: "Protein",        val: `${selected.protein_g || 0}g`,                       key: "protein" },
+              { label: "Fat",            val: `${selected.fat_g ?? 0}g`,                          key: "fat" },
+              { label: "Carbohydrates", val: `${selected.cho_g ?? 0}g`,                          key: "cho" },
+              { label: "Iron",          val: `${selected.iron_mg || 0}mg`,                        key: "iron" },
+              { label: "Glycemic index",val: (selected.glycemic_index || 0) > 0 ? String(selected.glycemic_index) : "—", key: "gi" },
+              { label: "Fermentation",  val: `${selected.fermentation_score || 0}/3`,   key: "ferm" },
+              { label: "Prebiotics",    val: `${selected.prebiotic_score || 0}/3`,      key: "pre" },
+              { label: "Inflammation Index", val: inflammText(selected.inflammatory_index || 0).label, key: "inf" },
+            ].map(({ label, val, key }) => (
+              <div key={key} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                <div className="text-[10px] text-gray-400 font-semibold uppercase mb-0.5 tracking-wider">{label}</div>
+                <div className={cn(
+                  "text-sm font-bold",
+                  key === "inf" ? inflammText(selected.inflammatory_index || 0).color : "text-gray-800"
+                )}>
+                  {val}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Daily Progress Target Tracks */}
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+            Contribution to your daily goals
+          </h3>
+          {[
+            { label: "Fiber",     val: selected.fiber_g,   max: 25, unit: "g"  },
+            { label: "Protein",   val: selected.protein_g, max: 50, unit: "g"  },
+            { label: "Iron",      val: selected.iron_mg,   max: 18, unit: "mg" },
+          ].map(({ label, val, max, unit }) => (
+            <div key={label} className="mb-2.5">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-600 font-semibold">{label}</span>
+                <span className="text-gray-400 font-medium tabular-nums">
+                  {val || 0}{unit} / {max}{unit}
+                  <span className="ml-1.5 font-bold text-gray-700">
+                    ({Math.round(((val || 0) / max) * 100)}%)
+                  </span>
+                </span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200/40">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-500", c(selected).bar)}
+                  style={{ width: `${Math.min(((val || 0) / max) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Health & Gut Insight Card 
+        {selected.notes && (
+          <div className={cn("rounded-2xl p-4 border shadow-sm", c(selected).bg, c(selected).border)}>
+            <div className={cn("text-xs font-bold mb-1.5 uppercase tracking-wider", c(selected).text)}>
+              Gut Health Insight
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed font-medium">{selected.notes}</p>
+          </div>
+        )}  */}
+
+        {/* Meal Preparation Ideas Block
+        {selected.slug && RECIPES[selected.slug]?.length > 0 && (
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+              Preparation & Serving Ideas
+            </h3>
+            <div className="space-y-2">
+              {RECIPES[selected.slug].map((r, i) => (
+                <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-3 shadow-sm">
+                  <div className="text-sm font-bold text-gray-800 mb-1">
+                    {r.name}
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium leading-relaxed">{r.steps}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}  
+
+        {/* EPHI validation source badge */}
+        {selected.source === "ephi" && (
+          <div className="flex items-center gap-2 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2.5 shadow-sm">
+            <span className="text-blue-600 text-xs font-extrabold tracking-wider bg-white px-1.5 py-0.5 rounded border border-blue-200 shrink-0">EPHI 2025</span>
+            <span className="text-blue-700 text-[11px] font-semibold leading-tight">
+              Verified by the Ethiopian Public Health Institute Guidelines
+            </span>
+          </div>
+        )}
+
+        {/* Reference Citations */}
+        {selected.source_citation && (
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+              Source Documentation
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {selected.source_citation.split(",").map(s => {
+                const src  = s.trim()
+                const key  = Object.keys(SOURCE_LINKS).find(k => src.includes(k))
+                const url  = key ? SOURCE_LINKS[key] : null
+                return url ? (
+                  <a
+                    key={src}
+                    href={url}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex items-center gap-1 bg-teal-50 border border-teal-200 text-teal-800 px-2.5 py-1 rounded-md text-xs font-semibold hover:bg-wellnet-100 transition-colors shadow-sm"
+                  >
+                    {src} <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                  </a>
+                ) : (
+                  <span key={src} className="bg-gray-50 border border-gray-200 text-gray-600 px-2.5 py-1 rounded-md text-xs font-semibold shadow-sm">
+                    {src}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Primary CTA Action Button */}
+        <button
+          onClick={() => handleAddToLog(selected)}
+          className="w-full bg-wellnet-500 hover:bg-wellnet-600 font-bold text-white flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm shadow-md transition-all active:scale-[0.99]"
+        >
+          <ShoppingCart className="w-4 h-4" />
+          <span>Add to Daily Meal Log</span>
+        </button>
+      </div>
     </div>
+  </div>
+)}    </div>
   )
 }

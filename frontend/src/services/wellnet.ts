@@ -1,3 +1,5 @@
+
+//frontend/src/services/wellnet.ts
 import api from "@/lib/api"
 import type {
   User, UserProfile, FamilyMember,
@@ -106,4 +108,51 @@ export const packageService = {
 export const notificationService = {
   getDeals: () => api.get<OffPeakDeal[]>("/notifications/deals/"),
   getHistory: () => api.get("/notifications/history/"),
+}
+// Add this alongside your other string formatting utilities
+export function formatPreparationState(stateString: string | null | undefined): string {
+  if (!stateString) return "";
+  
+  const lower = stateString.toLowerCase().trim();
+  
+  // If it contains both, "Boiled" is the active nutritional state you are tracking
+  if (lower.includes("boiled") && lower.includes("tire")) {
+    return "Boiled (from raw base)";
+  }
+  
+  // Capitalize the first letter for clean UI presentation
+  return stateString.charAt(0).toUpperCase() + stateString.slice(1);
+}
+
+
+// ── Community ─────────────────────────────────────────────────────────────────
+export const communityService = {
+  // Circles
+  myCircles:    ()                    => api.get("/community/circles/"),
+  createCircle: (data: any)           => api.post("/community/circles/", data),
+  getCircle:    (id: string)          => api.get(`/community/circles/${id}/`),
+  joinCircle:   (invite_code: string) => api.post("/community/circles/join/", { invite_code }),
+  leaveCircle:  (id: string)          => api.post(`/community/circles/${id}/leave/`),
+
+  // Jebena
+  jebenaCheckin: (data: {
+    circle_id: string; food_slug: string; message?: string; mood_emoji?: string
+  }) => api.post("/community/jebena/", data),
+  circleFeed: (circle_id: string) =>
+    api.get(`/community/circles/${circle_id}/jebena/`),
+
+  // Gursha
+  myGursha:     ()                                                                   => api.get("/community/gursha/"),
+  sendGursha:   (data: {
+    circle_id: string; to_username: string; food_slug: string; message?: string
+  })                                                                                 => api.post("/community/gursha/send/", data),
+  acceptGursha: (id: string)                                                         => api.post(`/community/gursha/${id}/accept/`),
+
+  // Edir
+  contributeEdir: (circle_id: string, amount_etb: number, note?: string) =>
+    api.post(`/community/circles/${circle_id}/edir/`, { amount_etb, note }),
+
+  // Feed
+  feed:     () => api.get("/community/feed/"),
+  likePost: (post_id: string) => api.post(`/community/feed/${post_id}/like/`),
 }

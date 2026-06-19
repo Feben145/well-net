@@ -1,3 +1,4 @@
+// frontend/src/app/dashboard/ai/page.tsx
 "use client"
 import { useEffect, useState, useRef } from "react"
 import {
@@ -5,7 +6,7 @@ import {
   Loader2, Calendar, MessageCircle, Printer, Download,
 } from "lucide-react"
 import { aiService } from "@/services/wellnet"
-import { useAuthStore } from "@/store"
+import useAuthStore from "@/store"
 import GutScoreRing from "@/components/wellness/GutScoreRing"
 import type { WellnessTipsResponse, JourneyFeedResponse, FeedCard } from "@/types"
 import { cn } from "@/lib/utils"
