@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import {
   Sparkles, Leaf, Zap, Star, RefreshCw,
-  Loader2, Calendar, MessageCircle, Printer, Download,
+  Loader2, Calendar, MessageCircle, Printer, Download, AlertCircle,
 } from "lucide-react"
 import { aiService } from "@/services/wellnet"
 import { useAuthStore } from "@/store"
@@ -34,24 +34,47 @@ export default function AIPage() {
   const [loadT, setLoadT] = useState(true)
   const [loadF, setLoadF] = useState(true)
   const [loadP, setLoadP] = useState(false)
+  // Track real fetch failures separately from "no data yet" so the UI can
+  // tell the user something actually went wrong instead of showing the
+  // same empty-state copy as a brand new account.
+  const [errT,  setErrT]  = useState(false)
+  const [errF,  setErrF]  = useState(false)
+
+  const loadTips = () => {
+    setLoadT(true)
+    setErrT(false)
+    return aiService.getTips()
+      .then(r => setTips(r.data))
+      .catch(() => setErrT(true))
+      .finally(() => setLoadT(false))
+  }
+
+  const loadFeed = () => {
+    setLoadF(true)
+    setErrF(false)
+    return aiService.getFeed()
+      .then(r => setFeed(r.data))
+      .catch(() => setErrF(true))
+      .finally(() => setLoadF(false))
+  }
 
   useEffect(() => {
-    aiService.getTips()
-      .then(r => setTips(r.data))
-      .catch(() => {})
-      .finally(() => setLoadT(false))
-
-    aiService.getFeed()
-      .then(r => setFeed(r.data))
-      .catch(() => {})
-      .finally(() => setLoadF(false))
+    loadTips()
+    loadFeed()
   }, [])
 
   const refreshTips = async () => {
     setLoadT(true)
-    try { setTips((await aiService.getTips()).data); toast.success("Tips refreshed!") }
-    catch { toast.error("Could not refresh tips") }
-    finally { setLoadT(false) }
+    setErrT(false)
+    try {
+      setTips((await aiService.getTips()).data)
+      toast.success("Tips refreshed!")
+    } catch {
+      setErrT(true)
+      toast.error("Could not refresh tips")
+    } finally {
+      setLoadT(false)
+    }
   }
 
   const generatePlan = async () => {
@@ -170,6 +193,14 @@ export default function AIPage() {
 
             {loadT ? (
               [...Array(3)].map((_,i) => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)
+            ) : errT ? (
+              <div className="card text-center py-6">
+                <AlertCircle className="w-6 h-6 text-red-300 mx-auto mb-2" />
+                <div className="text-sm text-red-500 mb-3">Couldn't load your tips right now.</div>
+                <button onClick={refreshTips} className="text-xs text-wellnet-600 font-medium">
+                  Try again
+                </button>
+              </div>
             ) : tips?.tips?.length ? (
               tips.tips.map((tip, i) => {
                 const Icon  = ICONS[tip.icon] || Leaf
@@ -231,6 +262,14 @@ export default function AIPage() {
             <p className="text-sm text-gray-500">Your wellness journey — today's story</p>
             {loadF ? (
               [...Array(4)].map((_,i) => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)
+            ) : errF ? (
+              <div className="card text-center py-6">
+                <AlertCircle className="w-6 h-6 text-red-300 mx-auto mb-2" />
+                <div className="text-sm text-red-500 mb-3">Couldn't load your journey feed right now.</div>
+                <button onClick={loadFeed} className="text-xs text-wellnet-600 font-medium">
+                  Try again
+                </button>
+              </div>
             ) : feedCards.length ? (
               feedCards.map((card: FeedCard, i: number) => {
                 const style = CARD[card.color] || CARD.teal
@@ -327,8 +366,8 @@ export default function AIPage() {
                           </div>
                           <div className="flex-1 text-xs text-gray-700 leading-relaxed">
                             {day.meals?.[meal]?.foods?.join(", ") || "—"}
-                            {day.meals?.[meal]?.notes && (
-                              <span className="text-gray-400"> · {day.meals[meal].notes}</span>
+                            {day.meals?.[meal]?.note && (
+                              <span className="text-gray-400"> · {day.meals[meal].note}</span>
                             )}
                           </div>
                         </div>

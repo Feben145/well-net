@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { Search, X, ExternalLink, BookOpen, Leaf, ShoppingCart } from "lucide-react"
+import { Search, X, ExternalLink, BookOpen, Leaf, ShoppingCart, ChevronDown, Loader2 } from "lucide-react"
 import { foodService, extractArray } from "@/services/wellnet"
 import type { EthiopianFood } from "@/types"
 import { cn } from "@/lib/utils"
@@ -32,7 +32,7 @@ const CAT_COLOR: Record<string, { bg: string; text: string; border: string; bar:
   special:       { bg:"bg-orange-50",  text:"text-orange-700",  border:"border-orange-200",  bar:"bg-orange-500" },
 }
 
-// Recipes per slug — curated for the hackathon demo
+// Recipes per slug — curated for demo
 const RECIPES: Record<string, { name: string; steps: string }[]> = {
   injera:       [
     { name:"Classic injera + misir wot", steps:"Tear injera, scoop misir wot and ayib. Eat together — the teff soaks up the berbere." },
@@ -74,6 +74,9 @@ const SOURCE_LINKS: Record<string, string> = {
   "Heritage Nutrition 2023": "https://heritagenutrition.co.uk/the-ethiopian-dietary-pattern-a-nutritional-blueprint-for-well-being/",
 }
 
+// Pagination — "Load more" appends results in chunks of this size.
+const PAGE_SIZE = 12
+
 function scoreColor(score: number) {
   if (score >= 75) return "text-wellnet-600"
   if (score >= 50) return "text-amber-600"
@@ -112,6 +115,11 @@ export default function FoodsPage() {
   const [pregnancy,  setPregnancy]  = useState(false)
   const [diabetes,   setDiabetes]   = useState(false)
   const [selected,   setSelected]   = useState<EthiopianFood | null>(null)
+
+  // Pagination: how many items are currently visible. Resets to PAGE_SIZE
+  // whenever the active filters change, so switching category/search never
+  // leaves you stranded on an empty "page 3" of a much smaller result set.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   useEffect(() => {
     foodService.list()
@@ -166,6 +174,20 @@ export default function FoodsPage() {
       return true
     })
   }, [foods, category, query, fasting, pregnancy, diabetes])
+
+  // Reset pagination back to the first page whenever the result set changes
+  // shape — otherwise narrowing a filter could leave visibleCount pointing
+  // past the end of a much smaller filtered list.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [category, query, fasting, pregnancy, diabetes])
+
+  const visibleFoods = filtered.slice(0, visibleCount)
+  const hasMore = visibleCount < filtered.length
+
+  const handleLoadMore = () => {
+    setVisibleCount(c => c + PAGE_SIZE)
+  }
 
   // ── FIX TS(2345): Explicit lookup handling string/number variants cleanly ──
   const handleAddToLog = (food: EthiopianFood) => {
@@ -283,84 +305,102 @@ export default function FoodsPage() {
           <p className="text-sm text-gray-500 font-medium">No foods match your active configuration matrices.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {filtered.map(food => {
-            const col   = c(food)
-            const score = singleFoodScore(food)
-            return (
-              <button
-                key={String(food.id)}
-                onClick={() => setSelected(food)}
-                className={cn(
-                  "text-left p-3.5 rounded-2xl border transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95 flex flex-col justify-between",
-                  col.bg, col.border
-                )}
-              >
-                <div className="w-full">
-                  <FoodName food={food} className="leading-snug line-clamp-2" />
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {visibleFoods.map(food => {
+              const col   = c(food)
+              const score = singleFoodScore(food)
+              return (
+                <button
+                  key={String(food.id)}
+                  onClick={() => setSelected(food)}
+                  className={cn(
+                    "text-left p-3.5 rounded-2xl border transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95 flex flex-col justify-between",
+                    col.bg, col.border
+                  )}
+                >
+                  <div className="w-full">
+                    <FoodName food={food} className="leading-snug line-clamp-2" />
 
-                  <span className={cn(
-                    "inline-block text-[9px] font-bold px-2 py-0.5 rounded-md mt-2 uppercase tracking-wider",
-                    "bg-white/80 backdrop-blur-sm shadow-sm border border-black/5", col.text
-                  )}>
-                    {food.category || "General"}
-                  </span>
-
-                  {/* Top 3 nutrition bars */}
-                  <div className="mt-3 space-y-1.5">
-                    {[
-                      { label: "Fiber",   val: food.fiber_g,   max: 25 },
-                      { label: "Protein", val: food.protein_g, max: 50 },
-                      { label: "Iron",    val: food.iron_mg,   max: 18 },
-                    ].map(({ label, val, max }) => (
-                      <div key={label}>
-                        <div className="flex justify-between text-[9px] text-gray-500 mb-0.5 font-medium">
-                          <span>{label}</span>
-                          <span className="font-semibold tabular-nums">{val || 0}g</span>
-                        </div>
-                        <div className="h-1 bg-white/60 rounded-full overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full transition-all duration-300", col.bar)}
-                            style={{ width: `${Math.min(((val || 0) / max) * 100, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="w-full mt-3">
-                  {/* Bottom chips flags block */}
-                  <div className="flex gap-1 flex-wrap">
-                    {(food.fermentation_score || 0) > 0 && (
-                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-wellnet-700 px-1.5 py-0.5 rounded-md font-semibold">
-                        🧫 Fermented
-                      </span>
-                    )}
-                    {food.fasting_safe && (
-                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-amber-700 px-1.5 py-0.5 rounded-md font-semibold">
-                        ✦ Fasting
-                      </span>
-                    )}
-                    {(food.glycemic_index || 0) > 0 && (
-                      <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-gray-600 px-1.5 py-0.5 rounded-md font-semibold tabular-nums">
-                        GI {food.glycemic_index}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Gut contribution output indicators */}
-                  <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between">
-                    <span className="text-[9px] text-gray-400 font-medium">Gut Index</span>
-                    <span className={cn("text-xs font-bold tabular-nums", scoreColor(score))}>
-                      {score}/100
+                    <span className={cn(
+                      "inline-block text-[9px] font-bold px-2 py-0.5 rounded-md mt-2 uppercase tracking-wider",
+                      "bg-white/80 backdrop-blur-sm shadow-sm border border-black/5", col.text
+                    )}>
+                      {food.category || "General"}
                     </span>
+
+                    {/* Top 3 nutrition bars */}
+                    <div className="mt-3 space-y-1.5">
+                      {[
+                        { label: "Fiber",   val: food.fiber_g,   max: 25 },
+                        { label: "Protein", val: food.protein_g, max: 50 },
+                        { label: "Iron",    val: food.iron_mg,   max: 18 },
+                      ].map(({ label, val, max }) => (
+                        <div key={label}>
+                          <div className="flex justify-between text-[9px] text-gray-500 mb-0.5 font-medium">
+                            <span>{label}</span>
+                            <span className="font-semibold tabular-nums">{val || 0}g</span>
+                          </div>
+                          <div className="h-1 bg-white/60 rounded-full overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full transition-all duration-300", col.bar)}
+                              style={{ width: `${Math.min(((val || 0) / max) * 100, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="w-full mt-3">
+                    {/* Bottom chips flags block */}
+                    <div className="flex gap-1 flex-wrap">
+                      {(food.fermentation_score || 0) > 0 && (
+                        <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-wellnet-700 px-1.5 py-0.5 rounded-md font-semibold">
+                          🧫 Fermented
+                        </span>
+                      )}
+                      {food.fasting_safe && (
+                        <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-amber-700 px-1.5 py-0.5 rounded-md font-semibold">
+                          ✦ Fasting
+                        </span>
+                      )}
+                      {(food.glycemic_index || 0) > 0 && (
+                        <span className="text-[9px] bg-white/90 shadow-sm border border-black/5 text-gray-600 px-1.5 py-0.5 rounded-md font-semibold tabular-nums">
+                          GI {food.glycemic_index}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Gut contribution output indicators */}
+                    <div className="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between">
+                      <span className="text-[9px] text-gray-400 font-medium">Gut Index</span>
+                      <span className={cn("text-xs font-bold tabular-nums", scoreColor(score))}>
+                        {score}/100
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <button
+                onClick={handleLoadMore}
+                className="flex items-center gap-2 btn-secondary px-5 py-2.5 text-sm font-medium"
+              >
+                <ChevronDown className="w-4 h-4" />
+                Load more
               </button>
-            )
-          })}
-        </div>
+              <span className="text-xs text-gray-400">
+                Showing {visibleFoods.length} of {filtered.length}
+              </span>
+            </div>
+          )}
+        </>
       )}
 
      {/* ── Detail modal ────────────────────────────────────────── */}

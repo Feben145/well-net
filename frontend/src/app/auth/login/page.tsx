@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Leaf, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Leaf, Eye, EyeOff, Loader2, BadgeCheck } from "lucide-react"
 import { authService } from "@/services/wellnet"
 import { useAuthStore } from "@/store"
 import { cn } from "@/lib/utils"
@@ -60,17 +60,26 @@ export default function LoginPage() {
 
         <div>
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-            Ethiopian Wellness,<br />Reimagined.
+            Ethiopian Wellness,<br />Backed by Science.
           </h1>
-          <p className="text-wellnet-100 text-lg leading-relaxed mb-8">
-            AI-powered gut health scoring rooted in the power of injera, 
-            misir wot, and Ethiopia's ancient wellness traditions.
+          <p className="text-wellnet-100 text-lg leading-relaxed mb-6">
+            AI-powered gut health scoring built on the EPHI Ethiopian Food
+            Composition Table — injera, misir wot, and 435 more foods,
+            verified by Ethiopia's own public health institute.
           </p>
 
-          {/* Testimonial-style stat cards */}
+          {/* EPHI source badge */}
+          <div className="flex items-center gap-2 mb-8 bg-white/10 rounded-2xl px-4 py-3 w-fit">
+            <BadgeCheck className="w-5 h-5 text-wellnet-100 shrink-0" />
+            <span className="text-wellnet-50 text-sm font-medium">
+              Sourced from the EPHI Food Composition Table
+            </span>
+          </div>
+
+          {/* Stat cards */}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { val: "18+", label: "Verified Ethiopian foods" },
+              { val: "437", label: "EPHI-verified Ethiopian foods" },
               { val: "82",  label: "Avg gut score after 2 weeks" },
               { val: "6",   label: "Family profiles per account" },
               { val: "24/7",label: "AI wellness coach" },
@@ -102,6 +111,14 @@ export default function LoginPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
             <p className="text-gray-500 text-sm mt-1">Sign in to your wellness journey</p>
+          </div>
+
+          {/* Mobile-only EPHI badge */}
+          <div className="lg:hidden flex items-center gap-2 mb-6 bg-wellnet-50 rounded-2xl px-4 py-3">
+            <BadgeCheck className="w-4 h-4 text-wellnet-600 shrink-0" />
+            <span className="text-wellnet-700 text-xs font-medium">
+              437 foods verified by the EPHI Food Composition Table
+            </span>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

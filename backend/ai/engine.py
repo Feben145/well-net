@@ -72,6 +72,34 @@ CATEGORY_LABELS = {
     "special":       "Special/Fats",
 }
 
+# MAIN categories occupy actual meal slots (breakfast/lunch/dinner "foods").
+# EXTRA categories (drinks, special/fats) are sides or accompaniments — they
+# should never be the only thing standing in for a meal, and never count
+# toward "main dish" variety the way grains/legumes/meat/veg/dairy do.
+MAIN_CATEGORY_IDS  = ["grains", "legumes", "meat", "dairy_poultry", "vegetables"]
+EXTRA_CATEGORY_IDS = ["drinks", "special"]
+
+# Categories that are inherently animal products. On fasting days (Wed/Fri in
+# the Ethiopian Orthodox tradition this app follows) these are excluded by
+# CATEGORY regardless of what an individual food's `fasting_safe` flag says
+# in the database — this is a hard rule, not just a data-trust assumption,
+# since a bad EPHI import could otherwise mark a meat/dairy item as
+# fasting-safe by mistake and nothing else in the code would catch it.
+ANIMAL_PRODUCT_CATEGORIES = {"meat", "dairy_poultry"}
+
+
+def _is_fasting_compliant(food: dict, is_fasting: bool) -> bool:
+    """Single source of truth for 'can this food appear on a fasting day'.
+    Combines the DB's fasting_safe flag with a hard category-level block on
+    animal products, so fasting days can never include meat/dairy/poultry
+    even if a food's fasting_safe flag is wrong."""
+    if not is_fasting:
+        return True
+    if food.get("category") in ANIMAL_PRODUCT_CATEGORIES:
+        return False
+    return bool(food.get("fasting_safe"))
+
+
 
 # ── DB access — single source of truth ─────────────────────────────────────────
 
@@ -217,13 +245,20 @@ def get_meal_plan(
         }
 
     all_names      = [f["name"] for f in db_foods]
-    fasting_names  = [f["name"] for f in db_foods if f["fasting_safe"]]
+    food_by_name   = {f["name"]: f for f in db_foods}
+    # Hard rule for what's shown to the model as "fasting-safe": animal
+    # products are excluded by category regardless of the DB's fasting_safe
+    # flag, so the model is never shown a mislabeled meat/dairy item as an
+    # option for Wednesday/Friday.
+    fasting_names  = [f["name"] for f in db_foods if _is_fasting_compliant(f, True)]
     pregnancy_safe = [f["name"] for f in db_foods if f["pregnancy_safe"]]
     diabetes_safe  = [f["name"] for f in db_foods if f["diabetes_friendly"]]
 
     if not fasting_names:
-        # Guarantee fasting days are always satisfiable
-        fasting_names = all_names[:5]
+        # Guarantee fasting days are always satisfiable, but still respect
+        # the hard animal-product rule even in this fallback.
+        non_animal = [n for n in all_names if food_by_name[n]["category"] not in ANIMAL_PRODUCT_CATEGORIES]
+        fasting_names = non_animal[:5] or all_names[:5]
 
     has_pregnant = any("pregnant" in m.get("conditions", []) for m in family_members)
     has_diabetic = any("diabetes" in m.get("conditions", []) for m in family_members)
@@ -251,19 +286,30 @@ CRITICAL RULES — FOLLOW EXACTLY:
 2. No oils, mayonnaise, processed foods, or anything off-list.
 3. Each meal's "foods" array = separate individual items, not one combined dish name.
 4. Each meal needs a one-sentence "note" describing how they're eaten together.
-5. Wednesday and Friday MUST be fasting days — only fasting-safe foods.
-6. VARIETY IS REQUIRED:
+5. Wednesday and Friday MUST be fasting days. On these days, NEVER include
+   ANY food from the Meat & Fish or Dairy & Poultry categories — no
+   exceptions, regardless of any other consideration. Only grains, legumes,
+   vegetables, drinks, and special/fats are allowed on fasting days.
+6. CATEGORY ROLES — Beverages (drinks) and Special/Fats (special) are
+   ACCOMPANIMENTS, not main dishes:
+   - Every meal's "foods" array must include at least one item from a MAIN
+     category (Grains, Legumes, Meat & Fish, Dairy & Poultry, or Vegetables).
+   - Drinks and Special/Fats items may be ADDED alongside main foods (e.g.
+     Buna with breakfast, Berbere seasoning a dish) but must never be the
+     only item in a meal, and must never fill a meal slot in place of an
+     actual dish.
+7. VARIETY IS REQUIRED:
    - Do not repeat the exact same food within the same day.
    - Avoid repeating the same food on consecutive days.
-   - Each meal should draw from MULTIPLE categories below (e.g. a grain +
+   - Each meal should draw from MULTIPLE main categories (e.g. a grain +
      a legume or vegetable + where appropriate a protein/dairy source),
      not just one category repeated.
-   - Across the week, rotate through ALL available categories rather than
-     leaning on one or two. If a category has multiple options, use
+   - Across the week, rotate through ALL available main categories rather
+     than leaning on one or two. If a category has multiple options, use
      different ones across the week instead of repeating the same item.
-7. Make it feel like a real week: balance fiber, protein, fermented foods, and iron
+8. Make it feel like a real week: balance fiber, protein, fermented foods, and iron
    across the week rather than cramming everything into one day.
-8. Food names MUST be copied EXACTLY, character-for-character, from the
+9. Food names MUST be copied EXACTLY, character-for-character, from the
    APPROVED FOODS list below. Do not abbreviate, translate, transliterate,
    invent, or output numbers/placeholders as food names. If you are unsure
    which approved food to use, pick any food from the APPROVED FOODS list —
@@ -410,8 +456,10 @@ def _validate_and_clean_plan(plan: dict, db_foods: list[dict], fasting_names: li
         key = str(food_str).lower().strip()
         if key in all_names_lower:
             name = all_names_lower[key]
-            if not is_fasting or name.lower() in fasting_names_lower:
+            food = food_by_name.get(name)
+            if food and _is_fasting_compliant(food, is_fasting):
                 return name
+            return None
         # Substring fallback only as a last resort, and only against names
         # that are a meaningfully close length match — prevents e.g. a short
         # garbled token from spuriously matching an unrelated long food name.
@@ -419,9 +467,9 @@ def _validate_and_clean_plan(plan: dict, db_foods: list[dict], fasting_names: li
             v for k, v in all_names_lower.items()
             if (key in k or k in v.lower()) and abs(len(key) - len(k)) <= 4
         ]
-        if candidates:
-            match = candidates[0]
-            if not is_fasting or match.lower() in fasting_names_lower:
+        for match in candidates:
+            food = food_by_name.get(match)
+            if food and _is_fasting_compliant(food, is_fasting):
                 return match
         return None
 
@@ -433,18 +481,40 @@ def _validate_and_clean_plan(plan: dict, db_foods: list[dict], fasting_names: li
                 counts[f["category"]] = counts.get(f["category"], 0) + 1
         return counts
 
-    def pick_replacement(used_today: set, is_fasting: bool, counts: dict):
-        """Prefer a food not yet used today, from the least-used category so far.
-        Ties within the same category count are broken randomly so refreshing
-        the plan produces real variation instead of always picking the same item."""
-        candidates = [f for f in db_foods if f["name"] not in used_today]
-        if is_fasting:
-            candidates = [f for f in candidates if f["fasting_safe"]] or candidates
+    def pick_replacement(used_today: set, is_fasting: bool, day_counts: dict, week_food_counts: dict, week_cat_counts: dict, prefer_main: bool = True):
+        """Prefer a food not yet used today, weighing both how often this food
+        and how often its category have already been used THIS WEEK (not just
+        today) — so a food/category that appeared Monday and Tuesday is less
+        likely to be picked again Wednesday, spreading variety across the
+        whole 7-day plan instead of only within a single day.
+        Hard rule: on fasting days, animal-product categories are excluded
+        regardless of the food's own fasting_safe flag.
+        When prefer_main is True, foods from MAIN_CATEGORY_IDS are tried
+        first — drinks/special are only used as a last resort, since they're
+        accompaniments, not meal-filling dishes.
+        Ties are broken randomly so refreshing produces real variation."""
+        candidates = [
+            f for f in db_foods
+            if f["name"] not in used_today and _is_fasting_compliant(f, is_fasting)
+        ]
         if not candidates:
             return None
         random.shuffle(candidates)
-        candidates.sort(key=lambda f: counts.get(f["category"], 0))
+        if prefer_main:
+            main_candidates = [f for f in candidates if f["category"] in MAIN_CATEGORY_IDS]
+            if main_candidates:
+                candidates = main_candidates
+        candidates.sort(key=lambda f: (
+            week_food_counts.get(f["name"], 0),       # least-used food this week first
+            week_cat_counts.get(f["category"], 0),    # then least-used category this week
+            day_counts.get(f["category"], 0),          # then least-used category today
+        ))
         return candidates[0]["name"]
+
+    # Week-level counters — persist ACROSS days so the planner spreads foods
+    # and categories over the whole week instead of only avoiding same-day repeats.
+    week_food_counts: dict[str, int] = {}
+    week_cat_counts: dict[str, int] = {cat: 0 for cat in CATEGORY_IDS}
 
     for day in plan.get("days", []):
         is_fasting = bool(day.get("is_fasting_day")) or day.get("day_name") in ("Wednesday", "Friday")
@@ -467,40 +537,90 @@ def _validate_and_clean_plan(plan: dict, db_foods: list[dict], fasting_names: li
                     # under-used category so the slot doesn't silently shrink
                     # and so we don't fall back to a fixed deterministic list.
                     logger.info(f"Well-Net AI: could not resolve food '{raw_food}' — substituting")
-                    name = pick_replacement(used_today, is_fasting, day_counts)
+                    name = pick_replacement(used_today, is_fasting, day_counts, week_food_counts, week_cat_counts)
                     if not name:
                         continue
                 if name in used_today:
                     # Repeat within the day — swap for variety where the pool allows it.
-                    replacement = pick_replacement(used_today, is_fasting, day_counts)
+                    replacement = pick_replacement(used_today, is_fasting, day_counts, week_food_counts, week_cat_counts)
                     if replacement and replacement not in used_today:
                         name = replacement
                     # if no replacement is available, fall through and allow the repeat
+                elif week_food_counts.get(name, 0) >= 2:
+                    # This food has already been used 2+ times earlier in the
+                    # week — try to swap it for something fresher, but only
+                    # if a genuinely different option exists.
+                    replacement = pick_replacement(used_today, is_fasting, day_counts, week_food_counts, week_cat_counts)
+                    if replacement and replacement != name and week_food_counts.get(replacement, 0) < week_food_counts.get(name, 0):
+                        name = replacement
                 resolved.append(name)
                 used_today.add(name)
                 f = food_by_name.get(name)
                 if f:
                     day_counts[f["category"]] = day_counts.get(f["category"], 0) + 1
+                    week_food_counts[name] = week_food_counts.get(name, 0) + 1
+                    week_cat_counts[f["category"]] = week_cat_counts.get(f["category"], 0) + 1
 
             if not resolved:
                 # Randomized, category-aware fallback instead of a fixed
                 # slice of db_foods (which previously always picked the
-                # same first 1-2 items, e.g. always 'Barley').
-                fallback_source = (
-                    [f for f in db_foods if f["fasting_safe"]] if is_fasting
-                    else db_foods
-                )
+                # same first 1-2 items, e.g. always 'Barley'). Uses the hard
+                # fasting rule (animal products excluded by category), not
+                # just the DB's fasting_safe flag.
+                fallback_source = [f for f in db_foods if _is_fasting_compliant(f, is_fasting)]
                 fallback_source = [f for f in fallback_source if f["name"] not in used_today] or fallback_source
+                # Prefer MAIN categories for the fallback so we don't end up
+                # seeding a meal with only a drink or a seasoning.
+                main_fallback = [f for f in fallback_source if f["category"] in MAIN_CATEGORY_IDS]
+                if main_fallback:
+                    fallback_source = main_fallback
                 sample_size = min(2, len(fallback_source))
                 resolved = [f["name"] for f in random.sample(fallback_source, sample_size)] if fallback_source else []
                 used_today.update(resolved)
+                for n in resolved:
+                    f = food_by_name.get(n)
+                    if f:
+                        week_food_counts[n] = week_food_counts.get(n, 0) + 1
+                        week_cat_counts[f["category"]] = week_cat_counts.get(f["category"], 0) + 1
+
+            # Guarantee: every meal must include at least one MAIN-category
+            # food. If the model's picks were entirely drinks/special (or the
+            # meal ended up empty), drinks/special are accompaniments, not
+            # substitutes for an actual dish — add a main food on top.
+            has_main = any(
+                food_by_name.get(n, {}).get("category") in MAIN_CATEGORY_IDS
+                for n in resolved
+            )
+            if not has_main:
+                main_addition = pick_replacement(
+                    set(resolved), is_fasting, day_counts, week_food_counts, week_cat_counts, prefer_main=True
+                )
+                if main_addition:
+                    resolved.append(main_addition)
+                    used_today.add(main_addition)
+                    f = food_by_name.get(main_addition)
+                    if f:
+                        day_counts[f["category"]] = day_counts.get(f["category"], 0) + 1
+                        week_food_counts[main_addition] = week_food_counts.get(main_addition, 0) + 1
+                        week_cat_counts[f["category"]] = week_cat_counts.get(f["category"], 0) + 1
 
             meal["foods"] = resolved
             meal["note"] = meal.get("note") or meal.get("notes") or ""
 
-    raw_list = plan.get("shopping_list", [])
-    cleaned = [all_names_lower[str(i).lower().strip()] for i in raw_list if str(i).lower().strip() in all_names_lower]
-    plan["shopping_list"] = cleaned or [f["name"] for f in db_foods[:6]]
+    # Shopping list MUST reflect what's actually scheduled in the plan — never
+    # re-sample the food pool independently, or you can end up with items in
+    # the shopping list that don't appear in any meal (and vice versa).
+    used_in_plan: list[str] = []
+    for day in plan.get("days", []):
+        for meal_key in ("breakfast", "lunch", "dinner"):
+            meal = day.get("meals", {}).get(meal_key)
+            if isinstance(meal, dict):
+                for n in meal.get("foods") or []:
+                    if n not in used_in_plan:
+                        used_in_plan.append(n)
+
+    plan["shopping_list"] = used_in_plan or [f["name"] for f in db_foods[:6]]
+
 
     return plan
 
@@ -569,6 +689,13 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
     Build a varied week by rotating through CATEGORIES (not just a flat food
     list), so each meal pulls from different food groups and the planner
     naturally avoids stacking three grains — or three of anything — in a row.
+
+    Variety is enforced at TWO levels:
+    - per-day: a meal won't repeat the same food twice (used_today)
+    - per-week: foods/categories used heavily on earlier days are
+      deprioritized on later days (week_food_counts / week_cat_counts),
+      and the category scan order is reshuffled each day so the same
+      1-2 categories don't dominate every single day.
     """
     pool = db_foods[:]
     if has_pregnant:
@@ -579,7 +706,9 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
     if not pool:
         return {"error": "No suitable foods found in the database for this meal plan.", "days": [], "shopping_list": []}
 
-    fasting_pool = [f for f in pool if f["fasting_safe"]] or pool
+    # Hard rule: fasting pool excludes animal-product categories regardless
+    # of each food's own fasting_safe flag (see _is_fasting_compliant).
+    fasting_pool = [f for f in pool if _is_fasting_compliant(f, True)] or pool
 
     # Group the pool by category so we can rotate across food groups.
     def by_category(source: list[dict]) -> dict[str, list[dict]]:
@@ -611,12 +740,25 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
         cursors[cat] = cursors.get(cat, 0) + 1
         return foods[idx]
 
+    # Week-level usage counters — persist across the whole loop, not reset
+    # per day, so days later in the week actively avoid foods/categories
+    # that already dominated earlier days.
+    week_food_counts: dict[str, int] = {}
+    week_cat_counts: dict[str, int] = {cat: 0 for cat in CATEGORY_IDS}
+
     def build_meal(grouped: dict[str, list[dict]], used_today: set, category_order: list[str], n: int) -> list[dict]:
-        """Pull up to n foods, preferring categories not yet used today, cycling through category_order."""
+        """Pull up to n foods, preferring categories not yet used today AND
+        not yet over-used this week, cycling through category_order."""
         picks = []
         cats_cycle = [c for c in category_order if c in grouped]
         if not cats_cycle:
             return picks
+
+        # Sort the day's category scan order by how little they've been used
+        # this week so far — categories that dominated earlier days sink to
+        # the back of the queue instead of being tried first every time.
+        cats_cycle = sorted(cats_cycle, key=lambda c: week_cat_counts.get(c, 0))
+
         attempts = 0
         i = 0
         while len(picks) < n and attempts < n * len(cats_cycle) + 5:
@@ -624,14 +766,32 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
             candidate = next_from_category(cat, grouped)
             attempts += 1
             i += 1
-            if candidate and candidate["name"] not in used_today:
-                picks.append(candidate)
-                used_today.add(candidate["name"])
+            if not candidate or candidate["name"] in used_today:
+                continue
+            # Skip foods already heavily used this week if a fresher
+            # same-category alternative exists; otherwise allow it rather
+            # than leaving the meal short.
+            if week_food_counts.get(candidate["name"], 0) >= 2:
+                alt = next((
+                    f for f in grouped.get(cat, [])
+                    if f["name"] not in used_today and week_food_counts.get(f["name"], 0) < week_food_counts.get(candidate["name"], 0)
+                ), None)
+                if alt:
+                    candidate = alt
+            picks.append(candidate)
+            used_today.add(candidate["name"])
+            week_food_counts[candidate["name"]] = week_food_counts.get(candidate["name"], 0) + 1
+            week_cat_counts[candidate["category"]] = week_cat_counts.get(candidate["category"], 0) + 1
         return picks
 
     # A typical Ethiopian plate centers on grains, then rotates through
-    # legumes/meat/dairy_poultry/vegetables/special for the rest.
-    primary_order = ["grains", "legumes", "vegetables", "meat", "dairy_poultry", "special", "drinks"]
+    # legumes/meat/dairy_poultry/vegetables for the rest. Drinks and
+    # Special/Fats are deliberately excluded here — they're accompaniments
+    # added on top of the meal afterward, never substitutes for a main dish.
+    # This is the PREFERRED order when all else is equal — build_meal
+    # re-sorts it daily by week-usage so it doesn't rigidly repeat the same
+    # pattern every day.
+    primary_order = [c for c in ["grains", "legumes", "vegetables", "meat", "dairy_poultry"] if c in MAIN_CATEGORY_IDS]
 
     day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     out_days = []
@@ -648,23 +808,72 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
         d = build_meal(grouped, used_today, primary_order, 2)
 
         # Safety net: if categories were too sparse to fill a meal, top up
-        # from anywhere in the day's pool (still avoiding same-day repeats
-        # where possible).
+        # from anywhere in the day's MAIN-category pool (still avoiding
+        # same-day repeats where possible), preferring the least week-used
+        # foods. Drinks/special are excluded here too — see add_extra below.
+        main_grouped = {cat: foods for cat, foods in grouped.items() if cat in MAIN_CATEGORY_IDS}
+
         def top_up(items: list[dict], n: int):
             if len(items) >= n:
                 return items
-            remaining = [f for foods in grouped.values() for f in foods if f["name"] not in used_today]
+            remaining = [f for foods in main_grouped.values() for f in foods if f["name"] not in used_today]
             random.shuffle(remaining)
+            remaining.sort(key=lambda f: week_food_counts.get(f["name"], 0))
             for f in remaining:
                 if len(items) >= n:
                     break
                 items.append(f)
                 used_today.add(f["name"])
+                week_food_counts[f["name"]] = week_food_counts.get(f["name"], 0) + 1
+                week_cat_counts[f["category"]] = week_cat_counts.get(f["category"], 0) + 1
             return items
 
         b = top_up(b, 2)
         l = top_up(l, 3)
         d = top_up(d, 2)
+
+        # Last-resort safety net: an empty meal is worse than a same-day
+        # repeat. If the main-category pool was too sparse to fill a meal
+        # even after top_up (e.g. a tiny DB), allow repeating an
+        # already-used main food rather than shipping a blank meal.
+        def ensure_not_empty(items: list[dict]):
+            if items:
+                return items
+            main_pool = [f for foods in main_grouped.values() for f in foods]
+            if not main_pool:
+                return items
+            random.shuffle(main_pool)
+            main_pool.sort(key=lambda f: week_food_counts.get(f["name"], 0))
+            return [main_pool[0]]
+
+        b = ensure_not_empty(b)
+        l = ensure_not_empty(l)
+        d = ensure_not_empty(d)
+
+        # Optionally add ONE accompaniment (drink or special/fats) per meal —
+        # never replacing a main dish, just riding alongside it, and only
+        # ever a food that's allowed on this day (fasting-compliant if needed).
+        extra_grouped = {cat: foods for cat, foods in grouped.items() if cat in EXTRA_CATEGORY_IDS}
+
+        def add_extra(items: list[dict]):
+            candidates = [
+                f for foods in extra_grouped.values() for f in foods
+                if f["name"] not in used_today and _is_fasting_compliant(f, is_fasting)
+            ]
+            if not candidates:
+                return items
+            random.shuffle(candidates)
+            candidates.sort(key=lambda f: week_food_counts.get(f["name"], 0))
+            pick = candidates[0]
+            items.append(pick)
+            used_today.add(pick["name"])
+            week_food_counts[pick["name"]] = week_food_counts.get(pick["name"], 0) + 1
+            week_cat_counts[pick["category"]] = week_cat_counts.get(pick["category"], 0) + 1
+            return items
+
+        b = add_extra(b)
+        l = add_extra(l)
+        d = add_extra(d)
 
         out_days.append({
             "day": i + 1,
@@ -677,13 +886,15 @@ def _rule_based_meal_plan(db_foods: list[dict], days: int, has_pregnant: bool, h
             },
         })
 
-    # Shopping list: pull a few items from each category present, rather than
-    # just the first N foods in the raw pool.
-    shopping = []
-    for cat in primary_order:
-        for f in pool_by_cat.get(cat, [])[:2]:
-            if f["name"] not in shopping:
-                shopping.append(f["name"])
+    # Shopping list MUST reflect what's actually scheduled across the week —
+    # never independently re-sample the category pool, or items can show up
+    # in the shopping list that no meal actually uses (and vice versa).
+    shopping: list[str] = []
+    for day in out_days:
+        for meal_key in ("breakfast", "lunch", "dinner"):
+            for name in day["meals"][meal_key]["foods"]:
+                if name not in shopping:
+                    shopping.append(name)
     if not shopping:
         shopping = list({f["name"] for f in pool[:10]})
 
