@@ -6,9 +6,15 @@ Run: python manage.py makemigrations ads && python manage.py migrate
 from django.db import models
 from django.utils import timezone
 from core.base import TimeStampedModel
+import uuid
 
 
-class Advertisement(TimeStampedModel):
+class Advertisement(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    business_name = models.CharField(max_length=200)
 
     CATEGORY_CHOICES = [
         ("spa",         "Spa & Wellness Centre"),
