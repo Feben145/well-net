@@ -1,6 +1,7 @@
 # backend/ads/admin.py
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils import timezone
 from datetime import date
 from .models import Advertisement
 
@@ -51,24 +52,20 @@ class AdvertisementAdmin(admin.ModelAdmin):
     list_display = [
         "business_name", "title", "category", "tier",
         "payment_status_badge", "amount_etb", "payment_date",
-        "is_active", "live_status",
-        "impressions", "clicks", "ctr_display",
+        "is_active", "live_status_safe",
+        "impressions", "clicks", "ctr_display_safe",
         "starts_at", "ends_at",
     ]
     list_filter = [
         "payment_status", "tier", "is_active", "category", "placement",
-        "target_fasting", "target_pregnant", "target_diabetes",
     ]
     search_fields = ["business_name", "title", "contact_email", "payment_reference"]
     
-    # Safe handling: only keep structural properties that match concrete db columns
     readonly_fields = [
-        "impressions", "clicks", "ctr_display", "live_status", "ad_preview", "tier_pricing_reference",
+        "impressions", "clicks", "ctr_display_safe", "live_status_safe", "ad_preview", "tier_pricing_reference",
     ]
     
     list_editable = ["is_active"]
-    
-    # Remove "-created_at" to prevent database engine sorting exceptions
     ordering = ["business_name"] 
 
     fieldsets = [
@@ -103,7 +100,7 @@ class AdvertisementAdmin(admin.ModelAdmin):
         }),
         ("Analytics (read-only)", {
             "classes": ["collapse"],
-            "fields": ["impressions", "clicks", "ctr_display"],
+            "fields": ["impressions", "clicks", "ctr_display_safe"],
         }),
     ]
 
@@ -116,16 +113,37 @@ class AdvertisementAdmin(admin.ModelAdmin):
         reset_analytics_action,
     ]
 
-    # ── Custom Columns Custom Display Logic ────────────────────────────────────
+    # ── Safe Custom Columns Display Logic ────────────────────────────────────
 
     @admin.display(description="Live?", boolean=True)
-    def live_status(self, obj):
-        return getattr(obj, 'is_live', False) if obj else False
+    def live_status_safe(self, obj):
+        """Safely checks if ad is live without relying on model properties"""
+        if not obj or not getattr(obj, "is_active", False):
+            return False
+        if getattr(obj, "payment_status", "unpaid") not in ("paid", "complimentary"):
+            return False
+        
+        now = timezone.now()
+        starts_at = getattr(obj, "starts_at", None) or now
+        ends_at = getattr(obj, "ends_at", None)
+        
+        if starts_at > now:
+            return False
+        if ends_at and ends_at < now:
+            return False
+        return True
 
     @admin.display(description="CTR %")
-    def ctr_display(self, obj):
-        val = getattr(obj, 'ctr', 0) if obj else 0
-        return f"{val}%"
+    def ctr_display_safe(self, obj):
+        """Prevents ZeroDivisionError completely if impressions are 0"""
+        if not obj:
+            return "0.0%"
+        impressions = getattr(obj, "impressions", 0) or 0
+        clicks = getattr(obj, "clicks", 0) or 0
+        if impressions == 0:
+            return "0.0%"
+        ctr = (clicks / impressions) * 100
+        return f"{ctr:.1f}%"
 
     @admin.display(description="Payment")
     def payment_status_badge(self, obj):
