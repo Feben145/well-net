@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "packages",
     "notifications",
     "community",
+    "ads",
 ]
 
 MIDDLEWARE = [
@@ -221,7 +222,7 @@ STATICFILES_DIRS = [
 ] if os.path.exists(os.path.join(BASE_DIR, "static")) else []
 
 # Enable WhiteNoise storage compression and cache management for assets
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 WHITENOISE_KEEP_ONLY_HASHED_FILES = True
 
 MEDIA_URL = "/media/"
