@@ -60,14 +60,16 @@ class AdvertisementAdmin(admin.ModelAdmin):
         "target_fasting", "target_pregnant", "target_diabetes",
     ]
     search_fields = ["business_name", "title", "contact_email", "payment_reference"]
+    
+    # Safe handling: only keep structural properties that match concrete db columns
     readonly_fields = [
-        "impressions", "clicks", "ctr_display", "live_status",
-        "created_at", "updated_at", "ad_preview", "tier_pricing_reference",
+        "impressions", "clicks", "ctr_display", "live_status", "ad_preview", "tier_pricing_reference",
     ]
     
-    # Kept only is_active editable inline to prevent form schema rendering crashes
     list_editable = ["is_active"]
-    ordering = ["-created_at"]
+    
+    # Remove "-created_at" to prevent database engine sorting exceptions
+    ordering = ["business_name"] 
 
     fieldsets = [
         ("Advertiser", {
@@ -101,7 +103,7 @@ class AdvertisementAdmin(admin.ModelAdmin):
         }),
         ("Analytics (read-only)", {
             "classes": ["collapse"],
-            "fields": ["impressions", "clicks", "ctr_display", "created_at", "updated_at"],
+            "fields": ["impressions", "clicks", "ctr_display"],
         }),
     ]
 
@@ -118,23 +120,26 @@ class AdvertisementAdmin(admin.ModelAdmin):
 
     @admin.display(description="Live?", boolean=True)
     def live_status(self, obj):
-        return getattr(obj, 'is_live', False)
+        return getattr(obj, 'is_live', False) if obj else False
 
     @admin.display(description="CTR %")
     def ctr_display(self, obj):
-        return f"{getattr(obj, 'ctr', 0)}%"
+        val = getattr(obj, 'ctr', 0) if obj else 0
+        return f"{val}%"
 
     @admin.display(description="Payment")
     def payment_status_badge(self, obj):
+        if not obj:
+            return ""
         colors = {
             "paid":          "#10b981",
             "unpaid":        "#f59e0b",
             "overdue":       "#ef4444",
             "complimentary": "#6366f1",
         }
-        status = getattr(obj, 'payment_status', 'unpaid')
-        color = colors.get(status, "#6b7280")
-        display_text = obj.get_payment_status_display() if hasattr(obj, 'get_payment_status_display') else status
+        status_val = getattr(obj, 'payment_status', 'unpaid')
+        color = colors.get(status_val, "#6b7280")
+        display_text = obj.get_payment_status_display() if hasattr(obj, 'get_payment_status_display') else status_val
         return format_html(
             '<span style="background:{};color:white;font-size:10px;'
             'padding:2px 8px;border-radius:999px;font-weight:600;">{}</span>',
@@ -158,7 +163,7 @@ class AdvertisementAdmin(admin.ModelAdmin):
         if not obj or not getattr(obj, 'title', None):
             return "Save the ad first to see a preview."
             
-        img_url = getattr(obj, 'image_url', '')
+        img_url = getattr(obj, 'image_url', '') or ''
         img_html = (
             f'<img src="{img_url}" style="width:60px;height:60px;'
             f'object-fit:cover;border-radius:8px;margin-right:10px;" />'
@@ -167,12 +172,15 @@ class AdvertisementAdmin(admin.ModelAdmin):
             'display:inline-block;margin-right:10px;"></div>'
         )
         
-        badge = getattr(obj, 'badge', '')
+        badge = getattr(obj, 'badge', '') or ''
         badge_html = (
             f'<span style="background:#10b981;color:white;font-size:10px;'
             f'padding:2px 8px;border-radius:999px;margin-left:6px;">{badge}</span>'
             if badge else ""
         )
+        
+        tagline_val = getattr(obj, 'tagline', '') or getattr(obj, 'business_name', '')
+        cta_val = getattr(obj, 'cta_label', 'Learn More') or 'Learn More'
         
         return format_html(
             '<div style="display:flex;align-items:center;padding:12px;'
@@ -187,6 +195,6 @@ class AdvertisementAdmin(admin.ModelAdmin):
             format_html(img_html),
             obj.title,
             format_html(badge_html),
-            obj.tagline or obj.business_name,
-            getattr(obj, 'cta_label', 'Learn More'),
+            tagline_val,
+            cta_val,
         )
